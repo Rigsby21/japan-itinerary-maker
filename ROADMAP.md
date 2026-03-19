@@ -126,6 +126,10 @@ You can swap pieces (e.g. Firebase instead of Supabase, or a different host); th
 | End of each phase  | Commit any last changes, then `git push origin main`. |
 | After push         | Optional: create a tag on GitHub (e.g. `phase-1-done`). |
 
+**Asking the AI to save to Git**
+
+When you want a snapshot backed up to GitHub, say: **"Save to Git"**, **"Push to Git"**, or **"Commit and push"**. The AI will run `git add .`, commit with a short message, and push to `origin main`.
+
 ---
 
 ## Phase 0: Foundation & data model

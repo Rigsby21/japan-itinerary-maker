@@ -1,9 +1,30 @@
 import Image from "next/image";
+import Link from "next/link";
+import { auth } from "@/auth";
 
-export default function Home() {
+export default async function Home() {
+  const session = await auth();
+
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+        {/* Phase 1 Move 1: Auth status */}
+        <div className="mb-8 flex flex-col gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+          {session ? (
+            <>
+              <p>
+                Signed in as <strong>{session.user?.email ?? session.user?.name ?? "—"}</strong> (role: {session.user?.role ?? "USER"})
+              </p>
+              <Link href="/api/auth/signout" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                Sign out
+              </Link>
+            </>
+          ) : (
+            <Link href="/api/auth/signin" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+              Sign in (Phase 1 — use any email, password: password)
+            </Link>
+          )}
+        </div>
         <Image
           className="dark:invert"
           src="/next.svg"

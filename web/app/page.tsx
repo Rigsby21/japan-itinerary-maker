@@ -2,27 +2,49 @@ import Image from "next/image";
 import Link from "next/link";
 import { auth } from "@/auth";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const session = await auth();
+  const params = await searchParams;
+  const showAdminRequired = params?.error === "admin-required";
 
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
         {/* Phase 1 Move 1: Auth status */}
         <div className="mb-8 flex flex-col gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+          {showAdminRequired && (
+            <p className="rounded bg-amber-100 px-3 py-2 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+              Admin access required. Sign in with an admin account to view that page.
+            </p>
+          )}
           {session ? (
             <>
               <p>
                 Signed in as <strong>{session.user?.email ?? session.user?.name ?? "—"}</strong> (role: {session.user?.role ?? "USER"})
               </p>
-              <Link href="/api/auth/signout" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
-                Sign out
-              </Link>
+              <div className="flex flex-wrap gap-4">
+                <Link href="/dashboard" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                  Dashboard
+                </Link>
+                {session.user?.role === "ADMIN" && (
+                  <Link href="/admin" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                    Admin
+                  </Link>
+                )}
+                <Link href="/api/auth/signout" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                  Sign out
+                </Link>
+              </div>
             </>
           ) : (
-            <Link href="/api/auth/signin" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
-              Sign in (Phase 1 — use any email, password: password)
-            </Link>
+            <div className="flex flex-wrap gap-4">
+              <Link href="/api/auth/signin" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                Sign in
+              </Link>
+              <Link href="/register" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                Sign up
+              </Link>
+            </div>
           )}
         </div>
         <Image

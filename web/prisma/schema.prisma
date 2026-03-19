@@ -44,6 +44,7 @@ model Itinerary {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   stops       ItineraryStop[]
+  markerTypes MarkerType[]
 }
 
 model ItineraryStop {
@@ -58,4 +59,56 @@ model ItineraryStop {
   lng         Float?
   notes       String?
   createdAt   DateTime  @default(now())
+  pois        Poi[]
+}
+
+// --- Phase 3 prep: custom POI markers + types + photo gallery ---
+
+model MarkerType {
+  id          String    @id @default(cuid())
+  itineraryId String
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  name        String
+  colorHex    String
+  createdAt   DateTime  @default(now())
+
+  pois        Poi[]
+
+  @@unique([itineraryId, name])
+}
+
+model Poi {
+  id           String       @id @default(cuid())
+  stopId       String
+  stop         ItineraryStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  markerTypeId String?
+  markerType   MarkerType?  @relation(fields: [markerTypeId], references: [id], onDelete: SetNull)
+
+  title        String
+  description  String?
+  lat          Float
+  lng          Float
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  photos       PoiPhoto[]
+
+  @@index([stopId])
+  @@index([markerTypeId])
+}
+
+model PoiPhoto {
+  id          String   @id @default(cuid())
+  poiId       String
+  poi         Poi      @relation(fields: [poiId], references: [id], onDelete: Cascade)
+  orderIndex  Int      @default(0)
+
+  // One of these will be set:
+  url         String?  // external URL (or public URL)
+  storagePath String?  // Supabase Storage path (preferred for uploads)
+
+  caption     String?
+  createdAt   DateTime @default(now())
+
+  @@index([poiId])
 }

@@ -23,6 +23,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
                 Signed in as <strong>{session.user?.email ?? session.user?.name ?? "—"}</strong> (role: {session.user?.role ?? "USER"})
               </p>
               <div className="flex flex-wrap gap-4">
+                <Link href="/featured" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                  Featured
+                </Link>
                 <Link href="/dashboard" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
                   Dashboard
                 </Link>
@@ -38,6 +41,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
             </>
           ) : (
             <div className="flex flex-wrap gap-4">
+              <Link href="/featured" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
+                Featured
+              </Link>
               <Link href="/api/auth/signin" className="font-medium text-zinc-950 dark:text-zinc-50 underline">
                 Sign in
               </Link>

@@ -1,0 +1,61 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Phase 0: Core data model for Japan Itinerary Maker ---
+
+enum Role {
+  USER
+  CREATOR
+  ADMIN
+}
+
+model User {
+  id                String       @id @default(cuid())
+  email             String       @unique
+  passwordHash      String?      // optional if using Supabase Auth later
+  displayName       String?
+  role              Role         @default(USER)
+  stripeCustomerId  String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  itineraries       Itinerary[]
+}
+
+model Itinerary {
+  id          String          @id @default(cuid())
+  title       String
+  slug        String          @unique
+  description String?
+  authorId    String
+  author      User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  isFeatured  Boolean         @default(false)
+  isPublic    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  stops       ItineraryStop[]
+}
+
+model ItineraryStop {
+  id          String    @id @default(cuid())
+  itineraryId String
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  dayNumber   Int
+  orderIndex  Int
+  placeName   String
+  city        String?
+  lat         Float?
+  lng         Float?
+  notes       String?
+  createdAt   DateTime  @default(now())
+}

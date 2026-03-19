@@ -1,9 +1,11 @@
 /**
  * Phase 1 — NextAuth config.
- * Move 1: Minimal sign-in with Credentials (no DB yet). Accept any email + password "password" for testing.
+ * Move 2: Sign-in uses the database — look up User by email, verify password hash, put role in session.
  */
+import bcrypt from "bcrypt";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { getPrisma } from "@/lib/db";
 
 // So we can use role in session (Phase 1)
 declare module "next-auth" {
@@ -21,15 +23,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        // Move 1: Test only — accept any email if password is "password". No DB yet.
         if (!credentials?.email || typeof credentials.email !== "string") return null;
         const password = credentials.password;
-        if (password !== "password") return null;
-        return {
-          id: "temp-1",
-          email: credentials.email,
-          name: credentials.email.split("@")[0],
-        };
+        if (typeof password !== "string" || !password) return null;
+
+        try {
+          const prisma = getPrisma();
+          const user = await prisma.user.findUnique({
+            where: { email: credentials.email.trim().toLowerCase() },
+          });
+          if (!user || !user.passwordHash) return null;
+          const ok = await bcrypt.compare(password, user.passwordHash);
+          if (!ok) return null;
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.displayName ?? user.email.split("@")[0],
+            role: user.role,
+          };
+        } catch {
+          return null;
+        }
       },
     }),
   ],
@@ -37,7 +51,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     jwt({ token, user }) {
       if (user) {
         token.id = user.id;
-        token.role = "USER"; // Move 1: hardcoded; we'll use DB role in a later move
+        token.role = (user as { role?: string }).role ?? "USER";
       }
       return token;
     },

@@ -7,8 +7,10 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
+    seed: "tsx prisma/seed.ts",
   },
+  // Use direct connection for migrations/seed (pooler can break them). App runtime still uses DATABASE_URL via getPrisma().
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });

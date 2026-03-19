@@ -38,3 +38,46 @@
    - Click “Sign out” → you should be signed out and see the “Sign in” link again.
 
 If anything doesn’t match (e.g. no link, wrong password, or session not showing), tell me what you see and we’ll fix it. Once you’re happy, say **approved** or **move on**, and we’ll do **Move 2** (connect auth to the database and real login).
+
+---
+
+## Move 2: Real login with the database ✅ Ready for your review
+
+**What was added**
+
+- Sign-in now uses the **database**: we look up the user by email and check the password with a secure hash (bcrypt).
+- **`web/auth.ts`** — `authorize()` calls `getPrisma()`, finds the user by email, verifies the password with `bcrypt.compare`, and puts the user’s **role from the DB** in the session.
+- **`web/prisma/seed.ts`** — A seed script that creates (or updates) a test user **test@example.com** with password **password** and role **USER**. Run it once so you can sign in.
+
+**You need a database for this.** If you didn’t set one up in Phase 0, add `DATABASE_URL` to `web/.env` (e.g. from [Supabase](https://supabase.com) or [Neon](https://neon.tech)), then run the steps below.
+
+**How to review**
+
+1. **Database and tables**
+   - In `web/.env` you must have **`DATABASE_URL`** set to a real PostgreSQL connection string.
+   - From the **web** folder, run:
+     - `npx prisma migrate dev --name init`
+     - (If you already ran this in Phase 0, you can skip it. If it runs, it creates the `User`, `Itinerary`, and `ItineraryStop` tables.)
+
+2. **Create the test user**
+   - From the **web** folder, run:
+     - `npx prisma db seed`
+   - You should see: “Seed done. You can sign in with: test@example.com / password”.
+
+3. **Run the app**
+   - From project root: `npm run dev`
+   - Open [http://localhost:3000](http://localhost:3000).
+
+4. **Sign in with the seeded user**
+   - Click “Sign in”.
+   - Email: **test@example.com**
+   - Password: **password**
+   - Submit.
+
+5. **Check the session**
+   - You should see “Signed in as test@example.com (role: USER)”. The role comes from the database now.
+
+6. **Wrong password**
+   - Sign out, then try to sign in with **test@example.com** and password **wrong**. You should **not** be logged in (invalid credentials).
+
+If you don’t have a database yet, sign-in will fail (we return “invalid credentials” when the DB isn’t available). Set up Postgres and run migrate + seed, then test again. Once you’re happy, say **approved** or **move on** for **Move 3** (sign-up / register).

@@ -189,6 +189,21 @@ async function main() {
     ],
   });
 
+  const samplePhotoPoi = await prisma.poi.findFirst({
+    where: { stopId: sensoji.id, title: "Kaminarimon photo" },
+  });
+  if (samplePhotoPoi) {
+    await prisma.poiPhoto.deleteMany({ where: { poiId: samplePhotoPoi.id } });
+    await prisma.poiPhoto.create({
+      data: {
+        poiId: samplePhotoPoi.id,
+        orderIndex: 0,
+        url: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=640&q=80",
+        caption: "Senso-ji area (sample — replace in admin)",
+      },
+    });
+  }
+
   console.log(
     "Seed done. Sign in with: test@example.com / password (USER) or admin@example.com / password (ADMIN). Featured itinerary slug:",
     featuredSlug

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { getFeaturedItineraries } from "@/lib/itineraries";
 
@@ -21,21 +22,46 @@ export default async function FeaturedPage() {
             No featured itineraries yet. (Next: we’ll add an admin editor to create and feature them.)
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-4">
             {itineraries.map((it) => (
-              <li key={it.id} className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+              <li
+                key={it.id}
+                className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800"
+              >
                 <Link
                   href={`/itineraries/${encodeURIComponent(it.slug)}`}
-                  className="text-base font-semibold text-zinc-900 underline dark:text-zinc-50"
+                  className="group flex flex-col sm:flex-row"
                 >
-                  {it.title}
+                  <div className="relative aspect-[16/10] w-full shrink-0 bg-zinc-100 sm:aspect-auto sm:h-36 sm:w-48 dark:bg-zinc-800">
+                    {it.coverImageUrl ? (
+                      <Image
+                        src={it.coverImageUrl}
+                        alt=""
+                        fill
+                        className="object-cover transition-opacity group-hover:opacity-95"
+                        sizes="(max-width: 640px) 100vw, 12rem"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex h-full min-h-[10rem] items-center justify-center px-4 text-center text-xs text-zinc-400 dark:text-zinc-500 sm:min-h-0">
+                        No photo yet
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-1 flex-col justify-center p-4">
+                    <span className="text-base font-semibold text-zinc-900 underline-offset-2 group-hover:underline dark:text-zinc-50">
+                      {it.title}
+                    </span>
+                    {it.description && (
+                      <p className="mt-1 line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">
+                        {it.description}
+                      </p>
+                    )}
+                    <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
+                      Stops: {it.stopsCount} • Created: {new Date(it.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
                 </Link>
-                {it.description && (
-                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{it.description}</p>
-                )}
-                <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
-                  Stops: {it.stopsCount} • Created: {new Date(it.createdAt).toLocaleDateString()}
-                </p>
               </li>
             ))}
           </ul>

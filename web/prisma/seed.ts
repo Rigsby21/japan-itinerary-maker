@@ -194,13 +194,21 @@ async function main() {
   });
   if (samplePhotoPoi) {
     await prisma.poiPhoto.deleteMany({ where: { poiId: samplePhotoPoi.id } });
-    await prisma.poiPhoto.create({
-      data: {
-        poiId: samplePhotoPoi.id,
-        orderIndex: 0,
-        url: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=640&q=80",
-        caption: "Senso-ji area (sample — replace in admin)",
-      },
+    await prisma.poiPhoto.createMany({
+      data: [
+        {
+          poiId: samplePhotoPoi.id,
+          orderIndex: 0,
+          url: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=640&q=80",
+          caption: "Senso-ji area (sample 1 of 2)",
+        },
+        {
+          poiId: samplePhotoPoi.id,
+          orderIndex: 1,
+          url: "https://images.unsplash.com/photo-1513407030348-c983a97b98d8?w=640&q=80",
+          caption: "Tokyo street (sample 2 of 2)",
+        },
+      ],
     });
   }
 

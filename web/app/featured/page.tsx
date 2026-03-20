@@ -21,47 +21,21 @@ export default async function FeaturedPage() {
             No featured itineraries yet. (Next: we’ll add an admin editor to create and feature them.)
           </p>
         ) : (
-          <ul className="flex flex-col gap-4">
+          <ul className="flex flex-col gap-3">
             {itineraries.map((it) => (
-              <li
-                key={it.id}
-                className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800"
-              >
+              <li key={it.id} className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
                 <Link
                   href={`/itineraries/${encodeURIComponent(it.slug)}`}
-                  className="group flex flex-col sm:flex-row"
+                  className="text-base font-semibold text-zinc-900 underline dark:text-zinc-50"
                 >
-                  {/* Explicit height so thumbnails never collapse (fill + flex was unreliable in some layouts). */}
-                  <div className="relative h-44 w-full shrink-0 overflow-hidden bg-zinc-100 sm:h-36 sm:w-44 dark:bg-zinc-800">
-                    {it.coverImageUrl ? (
-                      <img
-                        src={it.coverImageUrl}
-                        alt=""
-                        className="h-full w-full object-cover transition-opacity group-hover:opacity-95"
-                        loading="lazy"
-                        decoding="async"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center px-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
-                        No photo yet
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-1 flex-col justify-center p-4">
-                    <span className="text-base font-semibold text-zinc-900 underline-offset-2 group-hover:underline dark:text-zinc-50">
-                      {it.title}
-                    </span>
-                    {it.description && (
-                      <p className="mt-1 line-clamp-3 text-sm text-zinc-600 dark:text-zinc-400">
-                        {it.description}
-                      </p>
-                    )}
-                    <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
-                      Stops: {it.stopsCount} • Created: {new Date(it.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
+                  {it.title}
                 </Link>
+                {it.description && (
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{it.description}</p>
+                )}
+                <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
+                  Stops: {it.stopsCount} • Created: {new Date(it.createdAt).toLocaleDateString()}
+                </p>
               </li>
             ))}
           </ul>
@@ -70,4 +44,3 @@ export default async function FeaturedPage() {
     </div>
   );
 }
-

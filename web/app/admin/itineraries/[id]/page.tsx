@@ -11,6 +11,7 @@ import {
   deletePoiAction,
   updateItineraryVisibilityAction,
 } from "@/lib/actions/adminItinerary";
+import { MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
 
 export const dynamic = "force-dynamic";
 
@@ -186,7 +187,9 @@ export default async function AdminItineraryPage({
               ? "Photo URL is required."
               : poiPhotoError === "bad-url"
                 ? "Photo URL must start with http:// or https://"
-                : "Could not save photo."}
+                : poiPhotoError === "max-photos"
+                  ? `Each POI allows at most ${MAX_POI_PHOTOS_PER_POI} photos. Delete one to add another.`
+                  : "Could not save photo."}
           </p>
         )}
 
@@ -417,36 +420,45 @@ export default async function AdminItineraryPage({
                             </div>
 
                             <div className="mt-3 rounded border border-zinc-200 p-3 dark:border-zinc-800">
-                              <div className="mb-2 text-xs font-semibold text-zinc-900 dark:text-zinc-50">
-                                Photos
+                              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 text-xs font-semibold text-zinc-900 dark:text-zinc-50">
+                                <span>Photos</span>
+                                <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                                  {p.photos.length} / {MAX_POI_PHOTOS_PER_POI}
+                                </span>
                               </div>
 
-                              <form action={createPoiPhotoUrlAction} className="flex flex-wrap items-end gap-2">
-                                <input type="hidden" name="itineraryId" value={itinerary.id} />
-                                <input type="hidden" name="poiId" value={p.id} />
-                                <label className="flex flex-col gap-1">
-                                  <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Image URL</span>
-                                  <input
-                                    name="url"
-                                    placeholder="https://..."
-                                    className="w-80 rounded border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                                  />
-                                </label>
-                                <label className="flex flex-col gap-1">
-                                  <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Caption (optional)</span>
-                                  <input
-                                    name="caption"
-                                    placeholder="e.g. Entrance"
-                                    className="w-44 rounded border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                                  />
-                                </label>
-                                <button
-                                  type="submit"
-                                  className="rounded bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                                >
-                                  Add photo
-                                </button>
-                              </form>
+                              {p.photos.length < MAX_POI_PHOTOS_PER_POI ? (
+                                <form action={createPoiPhotoUrlAction} className="flex flex-wrap items-end gap-2">
+                                  <input type="hidden" name="itineraryId" value={itinerary.id} />
+                                  <input type="hidden" name="poiId" value={p.id} />
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Image URL</span>
+                                    <input
+                                      name="url"
+                                      placeholder="https://..."
+                                      className="w-80 rounded border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+                                    />
+                                  </label>
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">Caption (optional)</span>
+                                    <input
+                                      name="caption"
+                                      placeholder="e.g. Entrance"
+                                      className="w-44 rounded border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+                                    />
+                                  </label>
+                                  <button
+                                    type="submit"
+                                    className="rounded bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                                  >
+                                    Add photo
+                                  </button>
+                                </form>
+                              ) : (
+                                <p className="text-xs text-zinc-600 dark:text-zinc-400">
+                                  Maximum {MAX_POI_PHOTOS_PER_POI} photos per POI. Delete a photo below to add a different one.
+                                </p>
+                              )}
 
                               {p.photos.length === 0 ? (
                                 <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">No photos yet.</p>

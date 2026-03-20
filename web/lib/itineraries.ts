@@ -1,5 +1,4 @@
 import { getPrisma } from "@/lib/db";
-import { publicPoiPhotoUrl } from "@/lib/poiPhotoUrl";
 
 export type FeaturedItineraryListItem = {
   id: string;
@@ -8,27 +7,7 @@ export type FeaturedItineraryListItem = {
   description: string | null;
   createdAt: Date;
   stopsCount: number;
-  /** First resolvable POI photo URL in stop → POI → photo order, for card thumbnails */
-  coverImageUrl: string | null;
 };
-
-function firstCoverUrlFromStops(
-  stops: Array<{
-    pois: Array<{
-      photos: Array<{ url: string | null; storagePath: string | null }>;
-    }>;
-  }>,
-): string | null {
-  for (const stop of stops) {
-    for (const poi of stop.pois) {
-      for (const photo of poi.photos) {
-        const url = publicPoiPhotoUrl(photo);
-        if (url) return url;
-      }
-    }
-  }
-  return null;
-}
 
 export async function getFeaturedItineraries(): Promise<FeaturedItineraryListItem[]> {
   const prisma = getPrisma();
@@ -41,21 +20,7 @@ export async function getFeaturedItineraries(): Promise<FeaturedItineraryListIte
       slug: true,
       description: true,
       createdAt: true,
-      stops: {
-        orderBy: [{ dayNumber: "asc" }, { orderIndex: "asc" }],
-        select: {
-          id: true,
-          pois: {
-            orderBy: { createdAt: "asc" },
-            select: {
-              photos: {
-                orderBy: { orderIndex: "asc" },
-                select: { url: true, storagePath: true },
-              },
-            },
-          },
-        },
-      },
+      stops: { select: { id: true } },
     },
   });
   return rows.map((r) => ({
@@ -65,7 +30,6 @@ export async function getFeaturedItineraries(): Promise<FeaturedItineraryListIte
     description: r.description,
     createdAt: r.createdAt,
     stopsCount: r.stops.length,
-    coverImageUrl: firstCoverUrlFromStops(r.stops),
   }));
 }
 
@@ -91,6 +55,13 @@ export type PublicItineraryDetail = {
       lat: number;
       lng: number;
       markerType: { name: string; colorHex: string } | null;
+      photos: Array<{
+        id: string;
+        url: string | null;
+        storagePath: string | null;
+        orderIndex: number;
+        caption: string | null;
+      }>;
     }>;
   }>;
 };
@@ -126,6 +97,16 @@ export async function getPublicItineraryBySlug(slug: string): Promise<PublicItin
               lat: true,
               lng: true,
               markerType: { select: { name: true, colorHex: true } },
+              photos: {
+                orderBy: { orderIndex: "asc" },
+                select: {
+                  id: true,
+                  url: true,
+                  storagePath: true,
+                  orderIndex: true,
+                  caption: true,
+                },
+              },
             },
           },
         },

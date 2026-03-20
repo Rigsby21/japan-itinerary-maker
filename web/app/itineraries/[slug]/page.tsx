@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PoiPhotoCarousel } from "@/components/PoiPhotoCarousel";
 import { PublicItineraryRouteMap } from "@/components/maps/PublicItineraryRouteMap";
 import {
   publicItineraryPoiElementId,
@@ -7,6 +8,7 @@ import {
 } from "@/components/maps/publicItineraryPoiAnchor";
 import type { ItineraryMapMarker } from "@/components/maps/ItineraryReadOnlyMap";
 import { getPublicItineraryBySlug } from "@/lib/itineraries";
+import { publicPoiPhotoUrl } from "@/lib/poiPhotoUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -105,24 +107,52 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
                 </div>
                 {s.notes && <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{s.notes}</p>}
                 {s.pois.length > 0 && (
-                  <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
-                    {s.pois.map((p) => (
-                      <li
-                        key={p.id}
-                        id={publicItineraryPoiElementId(p.id)}
-                        className="scroll-mt-8"
-                      >
-                        {p.markerType && (
-                          <span className="mr-1 font-medium text-zinc-800 dark:text-zinc-200">
-                            [{p.markerType.name}]
-                          </span>
-                        )}
-                        {p.title}
-                        {p.description && (
-                          <span className="text-zinc-500 dark:text-zinc-500"> — {p.description}</span>
-                        )}
-                      </li>
-                    ))}
+                  <ul className="mt-3 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+                    {s.pois.map((p) => {
+                      const photoItems = p.photos
+                        .map((ph) => {
+                          const url = publicPoiPhotoUrl(ph);
+                          if (!url) return null;
+                          return { url, caption: ph.caption };
+                        })
+                        .filter((x): x is { url: string; caption: string | null } => x != null);
+                      const carouselPhotos = photoItems.map((item, idx) => {
+                        const caption = item.caption?.trim();
+                        const label =
+                          caption ||
+                          (photoItems.length > 1 ? `${p.title} (photo ${idx + 1})` : p.title);
+                        return { url: item.url, label };
+                      });
+                      return (
+                        <li
+                          key={p.id}
+                          id={publicItineraryPoiElementId(p.id)}
+                          className="scroll-mt-8 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p>
+                              {p.markerType && (
+                                <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                                  [{p.markerType.name}]{" "}
+                                </span>
+                              )}
+                              <span className="text-zinc-900 dark:text-zinc-50">{p.title}</span>
+                              {p.description && (
+                                <span className="text-zinc-500 dark:text-zinc-500">
+                                  {" "}
+                                  — {p.description}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          {carouselPhotos.length > 0 && (
+                            <div className="flex shrink-0 flex-wrap content-start sm:justify-end">
+                              <PoiPhotoCarousel photos={carouselPhotos} />
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </li>

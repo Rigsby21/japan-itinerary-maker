@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { getPrisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
 
 export async function updateItineraryVisibilityAction(formData: FormData) {
   await requireAdmin();
@@ -144,6 +145,12 @@ export async function createPoiPhotoUrlAction(formData: FormData) {
   }
 
   const prisma = getPrisma();
+
+  const existingCount = await prisma.poiPhoto.count({ where: { poiId } });
+  if (existingCount >= MAX_POI_PHOTOS_PER_POI) {
+    redirect(`/admin/itineraries/${encodeURIComponent(itineraryId)}?poiPhotoError=max-photos`);
+  }
+
   const currentMax = await prisma.poiPhoto.aggregate({
     where: { poiId },
     _max: { orderIndex: true },

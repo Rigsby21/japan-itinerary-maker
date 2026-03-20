@@ -1,7 +1,3 @@
-/**
- * Returns a browser-loadable URL for a POI photo row.
- * Prefer direct `url`; if only `storagePath` is set, needs optional base in env.
- */
 export function publicPoiPhotoUrl(photo: {
   url: string | null;
   storagePath: string | null;

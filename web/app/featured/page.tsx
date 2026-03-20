@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { getFeaturedItineraries } from "@/lib/itineraries";
 
@@ -32,18 +31,19 @@ export default async function FeaturedPage() {
                   href={`/itineraries/${encodeURIComponent(it.slug)}`}
                   className="group flex flex-col sm:flex-row"
                 >
-                  <div className="relative aspect-[16/10] w-full shrink-0 bg-zinc-100 sm:aspect-auto sm:h-36 sm:w-48 dark:bg-zinc-800">
+                  {/* Explicit height so thumbnails never collapse (fill + flex was unreliable in some layouts). */}
+                  <div className="relative h-44 w-full shrink-0 overflow-hidden bg-zinc-100 sm:h-36 sm:w-44 dark:bg-zinc-800">
                     {it.coverImageUrl ? (
-                      <Image
+                      <img
                         src={it.coverImageUrl}
                         alt=""
-                        fill
-                        className="object-cover transition-opacity group-hover:opacity-95"
-                        sizes="(max-width: 640px) 100vw, 12rem"
-                        unoptimized
+                        className="h-full w-full object-cover transition-opacity group-hover:opacity-95"
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <div className="flex h-full min-h-[10rem] items-center justify-center px-4 text-center text-xs text-zinc-400 dark:text-zinc-500 sm:min-h-0">
+                      <div className="flex h-full items-center justify-center px-4 text-center text-xs text-zinc-400 dark:text-zinc-500">
                         No photo yet
                       </div>
                     )}

@@ -66,6 +66,7 @@ async function main() {
     select: { id: true },
   });
 
+  await prisma.markerType.deleteMany({ where: { itineraryId: itinerary.id } });
   await prisma.itineraryStop.deleteMany({ where: { itineraryId: itinerary.id } });
   await prisma.itineraryStop.createMany({
     data: [
@@ -128,6 +129,62 @@ async function main() {
         notes: "Museums and a relaxed walk; great flexible afternoon spot.",
         lat: 35.716667,
         lng: 139.773333,
+      },
+    ],
+  });
+
+  const stops = await prisma.itineraryStop.findMany({
+    where: { itineraryId: itinerary.id },
+    orderBy: [{ dayNumber: "asc" }, { orderIndex: "asc" }],
+  });
+  const sensoji = stops.find((s) => s.placeName === "Senso-ji");
+  const skytree = stops.find((s) => s.placeName === "Tokyo Skytree");
+  if (!sensoji || !skytree) throw new Error("Expected Senso-ji and Skytree stops after seed.");
+
+  await prisma.markerType.createMany({
+    data: [
+      { itineraryId: itinerary.id, name: "Food", colorHex: "#dc2626" },
+      { itineraryId: itinerary.id, name: "Photo spot", colorHex: "#0891b2" },
+    ],
+  });
+  const types = await prisma.markerType.findMany({ where: { itineraryId: itinerary.id } });
+  const foodType = types.find((t) => t.name === "Food");
+  const photoType = types.find((t) => t.name === "Photo spot");
+  if (!foodType || !photoType) throw new Error("Marker types missing after seed.");
+
+  await prisma.poi.createMany({
+    data: [
+      {
+        stopId: sensoji.id,
+        markerTypeId: foodType.id,
+        title: "Nakamise snack break",
+        description: "Melon pan / ningyo-yaki",
+        lat: 35.7149,
+        lng: 139.7965,
+      },
+      {
+        stopId: sensoji.id,
+        markerTypeId: photoType.id,
+        title: "Kaminarimon photo",
+        description: "Classic gate shot",
+        lat: 35.7119,
+        lng: 139.7963,
+      },
+      {
+        stopId: skytree.id,
+        markerTypeId: photoType.id,
+        title: "Skytree viewpoint",
+        description: "Deck / surrounding plaza",
+        lat: 35.7102,
+        lng: 139.8105,
+      },
+      {
+        stopId: skytree.id,
+        markerTypeId: null,
+        title: "Untyped POI (purple default on map)",
+        description: "No marker type — checks default POI color",
+        lat: 35.7098,
+        lng: 139.8112,
       },
     ],
   });

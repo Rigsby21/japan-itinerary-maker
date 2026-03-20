@@ -48,6 +48,14 @@ export type PublicItineraryDetail = {
     notes: string | null;
     lat: number | null;
     lng: number | null;
+    pois: Array<{
+      id: string;
+      title: string;
+      description: string | null;
+      lat: number;
+      lng: number;
+      markerType: { name: string; colorHex: string } | null;
+    }>;
   }>;
 };
 
@@ -73,6 +81,17 @@ export async function getPublicItineraryBySlug(slug: string): Promise<PublicItin
           notes: true,
           lat: true,
           lng: true,
+          pois: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              lat: true,
+              lng: true,
+              markerType: { select: { name: true, colorHex: true } },
+            },
+          },
         },
       },
     },

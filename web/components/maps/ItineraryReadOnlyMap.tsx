@@ -16,10 +16,19 @@ export type ItineraryMapMarker = {
   stopId?: string;
 };
 
+export type ItineraryListMapFocusRequest = {
+  lat: number;
+  lng: number;
+  /** Bumps when the same coordinates should focus again (e.g. repeat clicks). */
+  nonce: number;
+};
+
 type Props = {
   markers: ItineraryMapMarker[];
   onPoiMarkerClick?: (poiId: string) => void;
   onStopMarkerClick?: (stopId: string) => void;
+  /** When set (e.g. from a POI row click), pan/zoom the map to these coordinates. */
+  listFocusRequest?: ItineraryListMapFocusRequest | null;
 };
 
 let mapsLoaderOptionsApplied = false;
@@ -47,12 +56,21 @@ function strokeOpacityForFillOpacity(fillOpacity: number): number {
   return Math.min(1, 0.35 + fillOpacity * 0.65);
 }
 
+function applyListFocusToMap(map: google.maps.Map, lat: number, lng: number) {
+  map.panTo({ lat, lng });
+  const z = map.getZoom() ?? 12;
+  map.setZoom(Math.min(z + 2, 18));
+}
+
 export function ItineraryReadOnlyMap({
   markers,
   onPoiMarkerClick,
   onStopMarkerClick,
+  listFocusRequest,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const deferredListFocusRef = useRef<ItineraryListMapFocusRequest | null>(null);
   const [loadError, setLoadError] = useState<"failed" | null>(null);
   const onPoiClickRef = useRef(onPoiMarkerClick);
   onPoiClickRef.current = onPoiMarkerClick;
@@ -177,6 +195,13 @@ export function ItineraryReadOnlyMap({
         }
 
         applyMarkerOpacities();
+
+        mapInstanceRef.current = map;
+        const pending = deferredListFocusRef.current;
+        if (pending) {
+          applyListFocusToMap(map, pending.lat, pending.lng);
+          deferredListFocusRef.current = null;
+        }
       })
       .catch(() => {
         if (!cancelled) setLoadError("failed");
@@ -184,8 +209,19 @@ export function ItineraryReadOnlyMap({
 
     return () => {
       cancelled = true;
+      mapInstanceRef.current = null;
     };
   }, [apiKey, markers]);
+
+  useEffect(() => {
+    if (listFocusRequest == null) return;
+    const map = mapInstanceRef.current;
+    if (map) {
+      applyListFocusToMap(map, listFocusRequest.lat, listFocusRequest.lng);
+    } else {
+      deferredListFocusRef.current = listFocusRequest;
+    }
+  }, [listFocusRequest]);
 
   if (markers.length === 0) return null;
 

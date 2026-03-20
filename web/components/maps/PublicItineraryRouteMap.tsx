@@ -1,6 +1,10 @@
 "use client";
 
-import { ItineraryReadOnlyMap, type ItineraryMapMarker } from "@/components/maps/ItineraryReadOnlyMap";
+import {
+  ItineraryReadOnlyMap,
+  type ItineraryListMapFocusRequest,
+  type ItineraryMapMarker,
+} from "@/components/maps/ItineraryReadOnlyMap";
 import {
   publicItineraryPoiElementId,
   publicItineraryStopElementId,
@@ -8,6 +12,7 @@ import {
 
 type Props = {
   markers: ItineraryMapMarker[];
+  listFocusRequest?: ItineraryListMapFocusRequest | null;
 };
 
 function scrollListRowToCenter(el: HTMLElement | null) {
@@ -41,10 +46,11 @@ function scrollListRowToCenter(el: HTMLElement | null) {
   }, 2000);
 }
 
-export function PublicItineraryRouteMap({ markers }: Props) {
+export function PublicItineraryRouteMap({ markers, listFocusRequest }: Props) {
   return (
     <ItineraryReadOnlyMap
       markers={markers}
+      listFocusRequest={listFocusRequest}
       onStopMarkerClick={(stopId) => {
         scrollListRowToCenter(document.getElementById(publicItineraryStopElementId(stopId)));
       }}

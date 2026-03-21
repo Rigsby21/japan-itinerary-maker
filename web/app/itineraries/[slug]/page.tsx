@@ -5,7 +5,9 @@ import {
   ItineraryMapWithListFocus,
   PoiMapFocusArea,
 } from "@/components/maps/ItineraryMapWithListFocus";
+import type { OverviewStopPin, RoutingStopPoint } from "@/components/maps/ItineraryOverviewRouteMap";
 import { StopPoiMapFilter } from "@/components/maps/StopPoiMapFilter";
+import { StopPoiMiniMap } from "@/components/maps/StopPoiMiniMap";
 import {
   publicItineraryPoiElementId,
   publicItineraryStopElementId,
@@ -37,12 +39,19 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
   if (!itinerary) notFound();
 
   const mapMarkers: ItineraryMapMarker[] = [];
+  const overviewStops: OverviewStopPin[] = [];
 
   let stopNumber = 0;
   for (const s of itinerary.stops) {
     stopNumber += 1;
     const ordinalLabel = englishOrdinal(stopNumber);
     if (s.lat != null && s.lng != null) {
+      overviewStops.push({
+        id: s.id,
+        lat: s.lat,
+        lng: s.lng,
+        title: `${ordinalLabel} stop — ${s.placeName} (Day ${s.dayNumber})`,
+      });
       mapMarkers.push({
         kind: "stop",
         lat: s.lat,
@@ -64,13 +73,19 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
     }
   }
 
+  const routingStops: RoutingStopPoint[] = itinerary.stops.map((s) => ({
+    lat: s.lat,
+    lng: s.lng,
+  }));
+
   const mapHeader = (
     <>
-      <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Route map</h2>
+      <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Route overview</h2>
       <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-        Click a navy circle (stop) or colored square (POI) to scroll to that spot in the list below; click a POI’s
-        text to zoom the map. Use each stop’s <span className="font-medium text-zinc-600 dark:text-zinc-300">Markers on map</span>{" "}
-        menu to show or hide POI pins. Hover circles for full stop titles.
+        Stops appear as navy pins; colored lines follow Google Directions between consecutive stops (one color per leg).
+        Choose driving, buses, trains, and/or walking above the map. Each stop below has its own POI map — use{" "}
+        <span className="font-medium text-zinc-600 dark:text-zinc-300">Markers on map</span> to show or hide POIs there
+        and on the mini-map. Click a stop pin to jump to that stop in the list; click POI text to zoom its stop’s POI map.
       </p>
     </>
   );
@@ -102,6 +117,15 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
                     markerType: p.markerType,
                   }))}
                 />
+                <StopPoiMiniMap
+                  pois={s.pois.map((p) => ({
+                    id: p.id,
+                    lat: p.lat,
+                    lng: p.lng,
+                    title: p.title,
+                    markerType: p.markerType,
+                  }))}
+                />
               <ul className="mt-3 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
                 {s.pois.map((p) => {
                   const photoItems = p.photos
@@ -124,7 +148,7 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
                       className="scroll-mt-8 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
                     >
                       <div className="min-w-0 flex-1">
-                        <PoiMapFocusArea lat={p.lat} lng={p.lng}>
+                        <PoiMapFocusArea poiId={p.id} lat={p.lat} lng={p.lng}>
                           <p>
                             {p.markerType && (
                               <span className="font-medium text-zinc-800 dark:text-zinc-200">
@@ -177,7 +201,12 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
         </div>
 
         {mapMarkers.length > 0 ? (
-          <ItineraryMapWithListFocus markers={mapMarkers} mapHeader={mapHeader}>
+          <ItineraryMapWithListFocus
+            markers={mapMarkers}
+            overviewStops={overviewStops}
+            routingStops={routingStops}
+            mapHeader={mapHeader}
+          >
             {stopsSection}
           </ItineraryMapWithListFocus>
         ) : (

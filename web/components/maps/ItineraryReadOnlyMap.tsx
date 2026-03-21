@@ -21,6 +21,8 @@ export type ItineraryListMapFocusRequest = {
   lng: number;
   /** Bumps when the same coordinates should focus again (e.g. repeat clicks). */
   nonce: number;
+  /** When set, only the stop’s POI mini-map for this POI should react. */
+  poiId?: string;
 };
 
 type Props = {
@@ -29,6 +31,17 @@ type Props = {
   onStopMarkerClick?: (stopId: string) => void;
   /** When set (e.g. from a POI row click), pan/zoom the map to these coordinates. */
   listFocusRequest?: ItineraryListMapFocusRequest | null;
+  /** Pixel inset passed to `fitBounds` (larger = wider framing). Default 32. */
+  fitBoundsPadding?: number;
+  /** Zoom when there is exactly one marker. Default 14. */
+  singleMarkerZoom?: number;
+  /** After `fitBounds` applies, subtract this many zoom levels (broader map, not extra padding). Default 0. */
+  initialZoomOutLevels?: number;
+  /**
+   * When set, clicking a POI pin or using list focus uses this zoom level instead of `currentZoom + 2`
+   * (keeps every mini-map consistent when initial zoom differs per stop).
+   */
+  poiFocusZoom?: number;
 };
 
 let mapsLoaderOptionsApplied = false;
@@ -56,10 +69,14 @@ function strokeOpacityForFillOpacity(fillOpacity: number): number {
   return Math.min(1, 0.35 + fillOpacity * 0.65);
 }
 
-function applyListFocusToMap(map: google.maps.Map, lat: number, lng: number) {
+function applyListFocusToMap(map: google.maps.Map, lat: number, lng: number, poiFocusZoom?: number) {
   map.panTo({ lat, lng });
-  const z = map.getZoom() ?? 12;
-  map.setZoom(Math.min(z + 2, 18));
+  if (poiFocusZoom != null) {
+    map.setZoom(poiFocusZoom);
+  } else {
+    const z = map.getZoom() ?? 12;
+    map.setZoom(Math.min(z + 2, 18));
+  }
 }
 
 export function ItineraryReadOnlyMap({
@@ -67,6 +84,10 @@ export function ItineraryReadOnlyMap({
   onPoiMarkerClick,
   onStopMarkerClick,
   listFocusRequest,
+  fitBoundsPadding = 32,
+  singleMarkerZoom = 14,
+  initialZoomOutLevels = 0,
+  poiFocusZoom,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
@@ -129,8 +150,12 @@ export function ItineraryReadOnlyMap({
 
         const bounds = new google.maps.LatLngBounds();
         const zoomOnMarkerClick = () => {
-          const z = map.getZoom() ?? 12;
-          map.setZoom(Math.min(z + 2, 18));
+          if (poiFocusZoom != null) {
+            map.setZoom(poiFocusZoom);
+          } else {
+            const z = map.getZoom() ?? 12;
+            map.setZoom(Math.min(z + 2, 18));
+          }
         };
 
         const markerStyles: Array<{
@@ -189,9 +214,23 @@ export function ItineraryReadOnlyMap({
 
         if (markers.length === 1) {
           map.setCenter({ lat: markers[0].lat, lng: markers[0].lng });
-          map.setZoom(14);
+          map.setZoom(singleMarkerZoom);
         } else {
-          map.fitBounds(bounds, { top: 32, right: 32, bottom: 32, left: 32 });
+          map.fitBounds(bounds, {
+            top: fitBoundsPadding,
+            right: fitBoundsPadding,
+            bottom: fitBoundsPadding,
+            left: fitBoundsPadding,
+          });
+        }
+
+        // Apply for every map instance: single-POI stops only used the branch above before, so they never zoomed out.
+        if (initialZoomOutLevels > 0) {
+          google.maps.event.addListenerOnce(map, "idle", () => {
+            if (cancelled) return;
+            const z = map.getZoom();
+            if (z != null) map.setZoom(Math.max(1, z - initialZoomOutLevels));
+          });
         }
 
         applyMarkerOpacities();
@@ -199,7 +238,7 @@ export function ItineraryReadOnlyMap({
         mapInstanceRef.current = map;
         const pending = deferredListFocusRef.current;
         if (pending) {
-          applyListFocusToMap(map, pending.lat, pending.lng);
+          applyListFocusToMap(map, pending.lat, pending.lng, poiFocusZoom);
           deferredListFocusRef.current = null;
         }
       })
@@ -211,17 +250,17 @@ export function ItineraryReadOnlyMap({
       cancelled = true;
       mapInstanceRef.current = null;
     };
-  }, [apiKey, markers]);
+  }, [apiKey, markers, fitBoundsPadding, singleMarkerZoom, initialZoomOutLevels, poiFocusZoom]);
 
   useEffect(() => {
     if (listFocusRequest == null) return;
     const map = mapInstanceRef.current;
     if (map) {
-      applyListFocusToMap(map, listFocusRequest.lat, listFocusRequest.lng);
+      applyListFocusToMap(map, listFocusRequest.lat, listFocusRequest.lng, poiFocusZoom);
     } else {
       deferredListFocusRef.current = listFocusRequest;
     }
-  }, [listFocusRequest]);
+  }, [listFocusRequest, poiFocusZoom]);
 
   if (markers.length === 0) return null;
 

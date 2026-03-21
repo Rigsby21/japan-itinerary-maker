@@ -35,7 +35,7 @@ type Props = {
   fitBoundsPadding?: number;
   /** Zoom when there is exactly one marker. Default 14. */
   singleMarkerZoom?: number;
-  /** After `fitBounds` applies, subtract this many zoom levels (broader map, not extra padding). Default 0. */
+  /** After `fitBounds` with 2+ markers, subtract this many zoom levels on first idle (broader view). Ignored for a single marker. Default 0. */
   initialZoomOutLevels?: number;
   /**
    * When set, clicking a POI pin or using list focus uses this zoom level instead of `currentZoom + 2`
@@ -224,8 +224,8 @@ export function ItineraryReadOnlyMap({
           });
         }
 
-        // Apply for every map instance: single-POI stops only used the branch above before, so they never zoomed out.
-        if (initialZoomOutLevels > 0) {
+        // Match admin POI map: only widen after fitBounds for multiple markers (single point keeps `singleMarkerZoom`).
+        if (markers.length > 1 && initialZoomOutLevels > 0) {
           google.maps.event.addListenerOnce(map, "idle", () => {
             if (cancelled) return;
             const z = map.getZoom();

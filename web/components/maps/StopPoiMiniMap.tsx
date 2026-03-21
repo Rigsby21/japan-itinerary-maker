@@ -70,9 +70,10 @@ export function StopPoiMiniMap({ pois }: Props) {
       <ItineraryReadOnlyMap
         markers={markers}
         listFocusRequest={focusForThisStop}
-        singleMarkerZoom={7}
-        initialZoomOutLevels={4}
-        poiFocusZoom={14}
+        fitBoundsPadding={64}
+        singleMarkerZoom={12}
+        initialZoomOutLevels={1}
+        poiFocusZoom={16}
         onPoiMarkerClick={(poiId) => {
           scrollPublicItineraryRowIntoView(publicItineraryPoiElementId(poiId));
         }}

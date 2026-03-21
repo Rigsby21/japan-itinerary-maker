@@ -1,4 +1,4 @@
-export type AdminItineraryTab = "stops" | "markers" | "budget" | "tips";
+export type AdminItineraryTab = "stops" | "markers" | "budget" | "tips" | "day-trips";
 
 export function adminItineraryHref(
   itineraryId: string,
@@ -40,12 +40,24 @@ type TabQuery = {
   stopDeleted?: string;
   stopError?: string;
   itineraryError?: string;
+  dayTripSaved?: string;
+  dayTripUpdated?: string;
+  dayTripDeleted?: string;
+  dayTripMoved?: string;
+  dayTripError?: string;
+  dayTripDestSaved?: string;
+  dayTripDestDeleted?: string;
+  dayTripDestMoved?: string;
+  dayTripDestError?: string;
+  dayTripPhotoSaved?: string;
+  dayTripPhotoDeleted?: string;
+  dayTripPhotoError?: string;
 };
 
 /** URL `tab` wins; else infer from flash params so old links still open the right section. */
 export function resolveAdminItineraryTab(query: TabQuery): AdminItineraryTab {
   const t = query.tab;
-  if (t === "stops" || t === "markers" || t === "budget" || t === "tips") return t;
+  if (t === "stops" || t === "markers" || t === "budget" || t === "tips" || t === "day-trips") return t;
 
   if (query.stopSaved || query.stopDeleted || query.stopError || query.itineraryError) return "stops";
 
@@ -71,6 +83,22 @@ export function resolveAdminItineraryTab(query: TabQuery): AdminItineraryTab {
     query.budgetError
   ) {
     return "budget";
+  }
+  if (
+    query.dayTripSaved ||
+    query.dayTripUpdated ||
+    query.dayTripDeleted ||
+    query.dayTripMoved ||
+    query.dayTripError ||
+    query.dayTripDestSaved ||
+    query.dayTripDestDeleted ||
+    query.dayTripDestMoved ||
+    query.dayTripDestError ||
+    query.dayTripPhotoSaved ||
+    query.dayTripPhotoDeleted ||
+    query.dayTripPhotoError
+  ) {
+    return "day-trips";
   }
   return "stops";
 }

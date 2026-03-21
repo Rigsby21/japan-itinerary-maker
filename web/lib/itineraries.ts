@@ -175,6 +175,30 @@ export type PublicItineraryDetail = {
         caption: string | null;
       }>;
     }>;
+    dayTrips: Array<{
+      id: string;
+      orderIndex: number;
+      title: string;
+      shortDescription: string | null;
+      description: string | null;
+      durationText: string | null;
+      costNote: string | null;
+      destinations: Array<{
+        id: string;
+        orderIndex: number;
+        placeName: string;
+        lat: number;
+        lng: number;
+        notes: string | null;
+      }>;
+      photos: Array<{
+        id: string;
+        url: string | null;
+        storagePath: string | null;
+        orderIndex: number;
+        caption: string | null;
+      }>;
+    }>;
   }>;
   budgetCurrency: string;
   travelTips: Array<{ id: string; title: string; body: string; orderIndex: number }>;
@@ -212,6 +236,39 @@ export async function getPublicItineraryBySlug(slug: string): Promise<PublicItin
               lat: true,
               lng: true,
               markerType: { select: { id: true, name: true, colorHex: true } },
+              photos: {
+                orderBy: { orderIndex: "asc" },
+                select: {
+                  id: true,
+                  url: true,
+                  storagePath: true,
+                  orderIndex: true,
+                  caption: true,
+                },
+              },
+            },
+          },
+          dayTrips: {
+            orderBy: { orderIndex: "asc" },
+            select: {
+              id: true,
+              orderIndex: true,
+              title: true,
+              shortDescription: true,
+              description: true,
+              durationText: true,
+              costNote: true,
+              destinations: {
+                orderBy: { orderIndex: "asc" },
+                select: {
+                  id: true,
+                  orderIndex: true,
+                  placeName: true,
+                  lat: true,
+                  lng: true,
+                  notes: true,
+                },
+              },
               photos: {
                 orderBy: { orderIndex: "asc" },
                 select: {

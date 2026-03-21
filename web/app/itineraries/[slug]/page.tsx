@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ItineraryRouteTravelProvider } from "@/components/maps/ItineraryRouteTravelContext";
 import { ItineraryMapWithListFocus } from "@/components/maps/ItineraryMapWithListFocus";
 import type { OverviewStopPin, RoutingStopPoint } from "@/components/maps/ItineraryOverviewRouteMap";
 import { StopPoiBlock } from "@/components/maps/StopPoiBlock";
 import { publicItineraryStopElementId } from "@/components/maps/publicItineraryPoiAnchor";
 import type { ItineraryMapMarker } from "@/components/maps/ItineraryReadOnlyMap";
+import { PublicDayTripsSection } from "@/components/PublicDayTripsSection";
 import { ItineraryPublicTabs } from "@/components/ItineraryPublicTabs";
 import { getPublicItineraryBySlug } from "@/lib/itineraries";
+import { englishOrdinal } from "@/lib/englishOrdinal";
 
 export const dynamic = "force-dynamic";
 
@@ -17,21 +20,6 @@ function formatBudgetAmount(amountStr: string, currency: string) {
     currency,
     maximumFractionDigits: currency === "JPY" || currency === "KRW" ? 0 : 2,
   }).format(n);
-}
-
-function englishOrdinal(n: number): string {
-  const v = n % 100;
-  if (v >= 11 && v <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1:
-      return `${n}st`;
-    case 2:
-      return `${n}nd`;
-    case 3:
-      return `${n}rd`;
-    default:
-      return `${n}th`;
-  }
 }
 
 export default async function ItineraryPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -52,6 +40,7 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
         lat: s.lat,
         lng: s.lng,
         title: `${ordinalLabel} stop — ${s.placeName} (Day ${s.dayNumber})`,
+        ordinalLabel,
       });
       mapMarkers.push({
         kind: "stop",
@@ -83,7 +72,8 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
     <>
       <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Route overview</h2>
       <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-        Stops appear as navy pins; colored lines follow Google Directions between consecutive stops (one color per leg).
+        Stops appear as numbered navy pins (1st, 2nd, … in itinerary order); colored lines follow Google Directions between
+        consecutive stops (one color per leg).
         Choose driving, buses, trains, and/or walking above the map. Each stop below has its own POI mini-map; under the map,
         use{" "}
         <span className="font-medium text-zinc-600 dark:text-zinc-300">Marker types on map</span> to choose which types
@@ -131,7 +121,8 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
 
   const showTips = itinerary.travelTips.length > 0;
   const showBudget = itinerary.budgetLines.length > 0;
-  const useTabs = showTips || showBudget;
+  const showDayTrips = itinerary.stops.some((s) => s.dayTrips.length > 0);
+  const useTabs = showTips || showBudget || showDayTrips;
 
   const itineraryPanel =
     mapMarkers.length > 0 ? (
@@ -163,6 +154,13 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
         </li>
       ))}
     </ul>
+  );
+
+  const dayTripsPanel = (
+    <div>
+      <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Day trips</h2>
+      <PublicDayTripsSection stops={itinerary.stops} />
+    </div>
   );
 
   const budgetPanel = (
@@ -224,13 +222,29 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
         </div>
 
         {useTabs ? (
-          <ItineraryPublicTabs
-            showTips={showTips}
-            showBudget={showBudget}
-            itineraryPanel={itineraryPanel}
-            tipsPanel={tipsPanel}
-            budgetPanel={budgetPanel}
-          />
+          showDayTrips ? (
+            <ItineraryRouteTravelProvider>
+              <ItineraryPublicTabs
+                showTips={showTips}
+                showBudget={showBudget}
+                showDayTrips
+                itineraryPanel={itineraryPanel}
+                dayTripsPanel={dayTripsPanel}
+                tipsPanel={tipsPanel}
+                budgetPanel={budgetPanel}
+              />
+            </ItineraryRouteTravelProvider>
+          ) : (
+            <ItineraryPublicTabs
+              showTips={showTips}
+              showBudget={showBudget}
+              showDayTrips={false}
+              itineraryPanel={itineraryPanel}
+              dayTripsPanel={dayTripsPanel}
+              tipsPanel={tipsPanel}
+              budgetPanel={budgetPanel}
+            />
+          )
         ) : (
           itineraryPanel
         )}

@@ -2,33 +2,34 @@
 
 import { useEffect, useRef, useState } from "react";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
+import { useItineraryRouteTravelPrefs } from "@/components/maps/ItineraryRouteTravelContext";
+import { TravelPrefCheckboxes } from "@/components/maps/TravelPrefCheckboxes";
 import {
   publicItineraryStopElementId,
   scrollPublicItineraryRowIntoView,
 } from "@/components/maps/publicItineraryPoiAnchor";
+import { routeLegWithDirectionsService } from "@/lib/googleDirectionsRouting";
+import {
+  ITINERARY_ROUTE_LEG_COLORS,
+  ITINERARY_STOP_PIN_COLOR,
+  fillOpacityForZoom,
+  itineraryMapCircleIcon,
+  itineraryOverviewStopLabel,
+} from "@/lib/itineraryMapVisuals";
 
 export type OverviewStopPin = {
   id: string;
   lat: number;
   lng: number;
   title: string;
+  /** Shown inside the navy stop pin, e.g. "1st", "2nd". */
+  ordinalLabel: string;
 };
 
 export type RoutingStopPoint = {
   lat: number | null;
   lng: number | null;
 };
-
-const LEG_COLORS = [
-  "#2563eb",
-  "#16a34a",
-  "#ca8a04",
-  "#dc2626",
-  "#9333ea",
-  "#0891b2",
-  "#c026d3",
-  "#4f46e5",
-];
 
 let mapsLoaderOptionsApplied = false;
 
@@ -39,32 +40,8 @@ function ensureMapsLoaderOptions(apiKey: string) {
   }
 }
 
-function fillOpacityForZoom(zoom: number): number {
-  const fullAtOrBelow = 12;
-  const fadedAtOrAbove = 18;
-  const min = 0.34;
-  const max = 1;
-  if (zoom <= fullAtOrBelow) return max;
-  if (zoom >= fadedAtOrAbove) return min;
-  const t = (zoom - fullAtOrBelow) / (fadedAtOrAbove - fullAtOrBelow);
-  return max - t * (max - min);
-}
-
-function strokeOpacityForFillOpacity(fillOpacity: number): number {
-  return Math.min(1, 0.35 + fillOpacity * 0.65);
-}
-
-/** Checkboxes; routing tries modes in order until one succeeds: driving → buses → trains → walking. */
-export type OverviewTravelPrefs = {
-  driving: boolean;
-  bus: boolean;
-  train: boolean;
-  walking: boolean;
-};
-
-function countTravelPrefsOn(p: OverviewTravelPrefs): number {
-  return (p.driving ? 1 : 0) + (p.bus ? 1 : 0) + (p.train ? 1 : 0) + (p.walking ? 1 : 0);
-}
+/** @deprecated Use {@link OverviewTravelPrefs} from `@/components/maps/ItineraryRouteTravelContext`. */
+export type { OverviewTravelPrefs } from "@/components/maps/ItineraryRouteTravelContext";
 
 type Props = {
   stops: OverviewStopPin[];
@@ -90,7 +67,7 @@ function buildOverviewLegs(routingStops: RoutingStopPoint[]): Array<{
     legs.push({
       origin: { lat: a.lat, lng: a.lng },
       destination: { lat: b.lat, lng: b.lng },
-      color: LEG_COLORS[colorIdx % LEG_COLORS.length],
+      color: ITINERARY_ROUTE_LEG_COLORS[colorIdx % ITINERARY_ROUTE_LEG_COLORS.length],
     });
     colorIdx += 1;
   }
@@ -102,22 +79,9 @@ export function ItineraryOverviewRouteMap({ stops, routingStops }: Props) {
   const [loadError, setLoadError] = useState<"failed" | null>(null);
   const [routesLoading, setRoutesLoading] = useState(false);
   const [routeNote, setRouteNote] = useState<string | null>(null);
-  const [travelPrefs, setTravelPrefs] = useState<OverviewTravelPrefs>({
-    driving: true,
-    bus: true,
-    train: true,
-    walking: true,
-  });
+  const { prefs: travelPrefs, setPref } = useItineraryRouteTravelPrefs();
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-  const setPref = (key: keyof OverviewTravelPrefs, on: boolean) => {
-    setTravelPrefs((m) => {
-      const next = { ...m, [key]: on };
-      if (countTravelPrefsOn(next) === 0) return m;
-      return next;
-    });
-  };
 
   useEffect(() => {
     if (!apiKey || stops.length === 0 || !mapRef.current) return;
@@ -160,21 +124,6 @@ export function ItineraryOverviewRouteMap({ stops, routingStops }: Props) {
         fullscreenControl: true,
       });
 
-      const STOP_PIN_COLOR = "#1e3a8a";
-      const circleIcon = (
-        fillColor: string,
-        scale: number,
-        fillOpacity: number,
-      ): google.maps.Symbol => ({
-        path: google.maps.SymbolPath.CIRCLE,
-        scale,
-        fillColor,
-        fillOpacity,
-        strokeColor: "#ffffff",
-        strokeOpacity: strokeOpacityForFillOpacity(fillOpacity),
-        strokeWeight: 2,
-      });
-
       const markerStyles: Array<{
         marker: google.maps.Marker;
         fill: string;
@@ -185,26 +134,28 @@ export function ItineraryOverviewRouteMap({ stops, routingStops }: Props) {
         const z = map.getZoom() ?? 12;
         const fo = fillOpacityForZoom(z);
         for (const s of markerStyles) {
-          s.marker.setIcon(circleIcon(s.fill, s.scale, fo));
+          s.marker.setIcon(itineraryMapCircleIcon(s.fill, s.scale, fo));
         }
       };
 
       const bounds = new google.maps.LatLngBounds();
+
       for (const s of stops) {
         if (cancelled) break;
         bounds.extend({ lat: s.lat, lng: s.lng });
-        const scale = 11;
+        const scale = 12;
         const initialFo = fillOpacityForZoom(map.getZoom() ?? 12);
         const marker = new google.maps.Marker({
           position: { lat: s.lat, lng: s.lng },
           map,
           title: s.title,
-          icon: circleIcon(STOP_PIN_COLOR, scale, initialFo),
+          label: itineraryOverviewStopLabel(s.ordinalLabel),
+          icon: itineraryMapCircleIcon(ITINERARY_STOP_PIN_COLOR, scale, initialFo),
           zIndex: 3,
           cursor: "pointer",
         });
         disposables.markers.push(marker);
-        markerStyles.push({ marker, fill: STOP_PIN_COLOR, scale });
+        markerStyles.push({ marker, fill: ITINERARY_STOP_PIN_COLOR, scale });
         marker.addListener("click", () => {
           const pos = marker.getPosition();
           if (!pos) return;
@@ -220,75 +171,15 @@ export function ItineraryOverviewRouteMap({ stops, routingStops }: Props) {
       const directionsService = new google.maps.DirectionsService();
       let anyRouteFailed = false;
 
-      const requestRoute = (
-        origin: google.maps.LatLngLiteral,
-        destination: google.maps.LatLngLiteral,
-        travelMode: google.maps.TravelMode,
-        transitOptions?: google.maps.TransitOptions,
-      ): Promise<google.maps.DirectionsResult | null> =>
-        new Promise((resolve) => {
-          const request: google.maps.DirectionsRequest = {
-            origin,
-            destination,
-            travelMode,
-            region: "jp",
-          };
-          if (transitOptions && travelMode === google.maps.TravelMode.TRANSIT) {
-            request.transitOptions = transitOptions;
-          }
-          directionsService.route(request, (result, status) => {
-            if (status === google.maps.DirectionsStatus.OK && result) resolve(result);
-            else resolve(null);
-          });
-        });
-
-      const tryLegRoute = async (
-        origin: google.maps.LatLngLiteral,
-        destination: google.maps.LatLngLiteral,
-      ): Promise<google.maps.DirectionsResult | null> => {
-        const p = travelPrefs;
-        const trainModes = [
-          google.maps.TransitMode.TRAIN,
-          google.maps.TransitMode.SUBWAY,
-          google.maps.TransitMode.RAIL,
-          google.maps.TransitMode.TRAM,
-        ];
-        const busModes = [google.maps.TransitMode.BUS];
-
-        const attempts: Array<{
-          mode: google.maps.TravelMode;
-          transitOptions?: google.maps.TransitOptions;
-        }> = [];
-        if (p.driving) {
-          attempts.push({ mode: google.maps.TravelMode.DRIVING });
-        }
-        if (p.bus) {
-          attempts.push({
-            mode: google.maps.TravelMode.TRANSIT,
-            transitOptions: { modes: busModes },
-          });
-        }
-        if (p.train) {
-          attempts.push({
-            mode: google.maps.TravelMode.TRANSIT,
-            transitOptions: { modes: trainModes },
-          });
-        }
-        if (p.walking) {
-          attempts.push({ mode: google.maps.TravelMode.WALKING });
-        }
-
-        for (const a of attempts) {
-          if (cancelled) return null;
-          const r = await requestRoute(origin, destination, a.mode, a.transitOptions);
-          if (r) return r;
-        }
-        return null;
-      };
-
       for (const leg of legs) {
         if (cancelled) break;
-        const result = await tryLegRoute(leg.origin, leg.destination);
+        const result = await routeLegWithDirectionsService(
+          directionsService,
+          leg.origin,
+          leg.destination,
+          travelPrefs,
+          () => cancelled,
+        );
 
         if (cancelled) break;
 
@@ -375,53 +266,7 @@ export function ItineraryOverviewRouteMap({ stops, routingStops }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-col gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800/40">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="font-medium text-zinc-800 dark:text-zinc-200">Travel preference</span>
-        <label className="flex cursor-pointer items-center gap-2 text-zinc-700 dark:text-zinc-300">
-          <input
-            type="checkbox"
-            checked={travelPrefs.driving}
-            onChange={(e) => setPref("driving", e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-600 dark:bg-zinc-900"
-          />
-          Driving
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-zinc-700 dark:text-zinc-300">
-          <input
-            type="checkbox"
-            checked={travelPrefs.bus}
-            onChange={(e) => setPref("bus", e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-600 dark:bg-zinc-900"
-          />
-          Buses
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-zinc-700 dark:text-zinc-300">
-          <input
-            type="checkbox"
-            checked={travelPrefs.train}
-            onChange={(e) => setPref("train", e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-600 dark:bg-zinc-900"
-          />
-          Trains
-        </label>
-        <label className="flex cursor-pointer items-center gap-2 text-zinc-700 dark:text-zinc-300">
-          <input
-            type="checkbox"
-            checked={travelPrefs.walking}
-            onChange={(e) => setPref("walking", e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 dark:border-zinc-600 dark:bg-zinc-900"
-          />
-          Walking
-        </label>
-        {routesLoading && (
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">Updating routes…</span>
-        )}
-        </div>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          At least one option must stay selected so the map can route between stops.
-        </p>
-      </div>
+      <TravelPrefCheckboxes prefs={travelPrefs} setPref={setPref} routesLoading={routesLoading} />
 
       <div
         ref={mapRef}

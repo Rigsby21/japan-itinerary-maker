@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/app/generated/prisma/client";
 import { adminItineraryHref } from "@/lib/adminItineraryUrl";
@@ -7,7 +8,7 @@ import { isBudgetCurrency } from "@/lib/budgetCurrencies";
 import { allocateUniqueItinerarySlug } from "@/lib/itinerarySlug";
 import { getPrisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
-import { MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
+import { MAX_DAY_TRIP_PHOTOS, MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
 
 function parseMoneyAmount(raw: string): number | null {
   const s = raw.trim().replace(/,/g, "");
@@ -519,4 +520,395 @@ export async function deleteBudgetLineAction(formData: FormData) {
 
   await prisma.itineraryBudgetLine.delete({ where: { id: lineId } });
   redirect(adminItineraryHref(itineraryId, "budget", { budgetLineDeleted: "1" }));
+}
+
+async function assertDayTripForItinerary(dayTripId: string, itineraryId: string) {
+  const prisma = getPrisma();
+  const dt = await prisma.dayTrip.findUnique({
+    where: { id: dayTripId },
+    select: { id: true, stop: { select: { itineraryId: true } } },
+  });
+  if (!dt || dt.stop.itineraryId !== itineraryId) return null;
+  return dt;
+}
+
+export async function createDayTripAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const stopId = formData.get("stopId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!stopId || typeof stopId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const rawTitle = formData.get("title");
+  const title = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  if (!title) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripError: "missing-title" }));
+  }
+
+  const prisma = getPrisma();
+  const stop = await prisma.itineraryStop.findUnique({
+    where: { id: stopId },
+    select: { itineraryId: true, lat: true, lng: true },
+  });
+  if (!stop || stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripError: "bad-stop" }));
+  }
+  if (stop.lat == null || stop.lng == null || !Number.isFinite(stop.lat) || !Number.isFinite(stop.lng)) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripError: "stop-needs-coords" }));
+  }
+
+  const maxIx = await prisma.dayTrip.aggregate({
+    where: { stopId },
+    _max: { orderIndex: true },
+  });
+  const orderIndex = (maxIx._max.orderIndex ?? -1) + 1;
+
+  const shortDescription = typeof formData.get("shortDescription") === "string" ? String(formData.get("shortDescription")).trim() : "";
+  const description = typeof formData.get("description") === "string" ? String(formData.get("description")).trim() : "";
+  const durationText = typeof formData.get("durationText") === "string" ? String(formData.get("durationText")).trim() : "";
+  const costNote = typeof formData.get("costNote") === "string" ? String(formData.get("costNote")).trim() : "";
+
+  await prisma.dayTrip.create({
+    data: {
+      stopId,
+      orderIndex,
+      title,
+      shortDescription: shortDescription || null,
+      description: description || null,
+      durationText: durationText || null,
+      costNote: costNote || null,
+    },
+  });
+
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripSaved: "1" }));
+}
+
+export async function updateDayTripAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const dayTripId = formData.get("dayTripId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!dayTripId || typeof dayTripId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const prisma = getPrisma();
+  const ok = await assertDayTripForItinerary(dayTripId, itineraryId);
+  if (!ok) redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripError: "bad-trip" }));
+
+  const rawTitle = formData.get("title");
+  const title = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  if (!title) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripError: "missing-title" }));
+  }
+
+  const shortDescription = typeof formData.get("shortDescription") === "string" ? String(formData.get("shortDescription")).trim() : "";
+  const description = typeof formData.get("description") === "string" ? String(formData.get("description")).trim() : "";
+  const durationText = typeof formData.get("durationText") === "string" ? String(formData.get("durationText")).trim() : "";
+  const costNote = typeof formData.get("costNote") === "string" ? String(formData.get("costNote")).trim() : "";
+
+  await prisma.dayTrip.update({
+    where: { id: dayTripId },
+    data: {
+      title,
+      shortDescription: shortDescription || null,
+      description: description || null,
+      durationText: durationText || null,
+      costNote: costNote || null,
+    },
+  });
+
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripUpdated: "1" }));
+}
+
+export async function deleteDayTripAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const dayTripId = formData.get("dayTripId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!dayTripId || typeof dayTripId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const prisma = getPrisma();
+  const ok = await assertDayTripForItinerary(dayTripId, itineraryId);
+  if (!ok) redirect(adminItineraryHref(itineraryId, "day-trips"));
+
+  await prisma.dayTrip.delete({ where: { id: dayTripId } });
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripDeleted: "1" }));
+}
+
+export async function moveDayTripAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const dayTripId = formData.get("dayTripId");
+  const dir = formData.get("direction");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!dayTripId || typeof dayTripId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+  if (dir !== "up" && dir !== "down") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const prisma = getPrisma();
+  const trip = await prisma.dayTrip.findUnique({
+    where: { id: dayTripId },
+    select: { id: true, stopId: true, orderIndex: true, stop: { select: { itineraryId: true } } },
+  });
+  if (!trip || trip.stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const siblings = await prisma.dayTrip.findMany({
+    where: { stopId: trip.stopId },
+    orderBy: { orderIndex: "asc" },
+    select: { id: true, orderIndex: true },
+  });
+  const idx = siblings.findIndex((s) => s.id === trip.id);
+  const swapWith = dir === "up" ? idx - 1 : idx + 1;
+  if (swapWith < 0 || swapWith >= siblings.length) {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const a = siblings[idx];
+  const b = siblings[swapWith];
+  await prisma.$transaction([
+    prisma.dayTrip.update({ where: { id: a.id }, data: { orderIndex: b.orderIndex } }),
+    prisma.dayTrip.update({ where: { id: b.id }, data: { orderIndex: a.orderIndex } }),
+  ]);
+
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripMoved: "1" }));
+}
+
+export async function createDayTripDestinationAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const dayTripId = formData.get("dayTripId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!dayTripId || typeof dayTripId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const placeName = typeof formData.get("placeName") === "string" ? String(formData.get("placeName")).trim() : "";
+  const lat = Number(formData.get("lat"));
+  const lng = Number(formData.get("lng"));
+  if (!placeName) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripDestError: "missing-place" }));
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripDestError: "bad-coords" }));
+  }
+
+  const prisma = getPrisma();
+  const ok = await assertDayTripForItinerary(dayTripId, itineraryId);
+  if (!ok) redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripDestError: "bad-trip" }));
+
+  const notes = typeof formData.get("notes") === "string" ? String(formData.get("notes")).trim() : "";
+
+  const maxIx = await prisma.dayTripDestination.aggregate({
+    where: { dayTripId },
+    _max: { orderIndex: true },
+  });
+  const orderIndex = (maxIx._max.orderIndex ?? -1) + 1;
+
+  await prisma.dayTripDestination.create({
+    data: {
+      dayTripId,
+      orderIndex,
+      placeName,
+      lat,
+      lng,
+      notes: notes || null,
+    },
+  });
+
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripDestSaved: "1" }));
+}
+
+/** Same as the form action but returns JSON and revalidates — for map click-to-add without losing tab state. */
+export async function createDayTripDestinationInlineAction(payload: {
+  itineraryId: string;
+  dayTripId: string;
+  placeName: string;
+  lat: number;
+  lng: number;
+  notes?: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+  const { itineraryId, dayTripId, placeName, lat, lng, notes } = payload;
+  const trimmedName = placeName.trim();
+  if (!trimmedName) return { ok: false, error: "missing-place" };
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { ok: false, error: "bad-coords" };
+
+  const prisma = getPrisma();
+  const okTrip = await assertDayTripForItinerary(dayTripId, itineraryId);
+  if (!okTrip) return { ok: false, error: "bad-trip" };
+
+  const maxIx = await prisma.dayTripDestination.aggregate({
+    where: { dayTripId },
+    _max: { orderIndex: true },
+  });
+  const orderIndex = (maxIx._max.orderIndex ?? -1) + 1;
+  const notesTrim = typeof notes === "string" ? notes.trim() : "";
+
+  await prisma.dayTripDestination.create({
+    data: {
+      dayTripId,
+      orderIndex,
+      placeName: trimmedName,
+      lat,
+      lng,
+      notes: notesTrim || null,
+    },
+  });
+
+  revalidatePath(`/admin/itineraries/${itineraryId}`, "page");
+  return { ok: true };
+}
+
+export async function deleteDayTripDestinationAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const destinationId = formData.get("destinationId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!destinationId || typeof destinationId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const prisma = getPrisma();
+  const dest = await prisma.dayTripDestination.findUnique({
+    where: { id: destinationId },
+    select: { id: true, dayTrip: { select: { id: true, stop: { select: { itineraryId: true } } } } },
+  });
+  if (!dest || dest.dayTrip.stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  await prisma.dayTripDestination.delete({ where: { id: destinationId } });
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripDestDeleted: "1" }));
+}
+
+export async function moveDayTripDestinationAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const destinationId = formData.get("destinationId");
+  const dir = formData.get("direction");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!destinationId || typeof destinationId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+  if (dir !== "up" && dir !== "down") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const prisma = getPrisma();
+  const dest = await prisma.dayTripDestination.findUnique({
+    where: { id: destinationId },
+    select: {
+      id: true,
+      dayTripId: true,
+      orderIndex: true,
+      dayTrip: { select: { stop: { select: { itineraryId: true } } } },
+    },
+  });
+  if (!dest || dest.dayTrip.stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const siblings = await prisma.dayTripDestination.findMany({
+    where: { dayTripId: dest.dayTripId },
+    orderBy: { orderIndex: "asc" },
+    select: { id: true, orderIndex: true },
+  });
+  const idx = siblings.findIndex((s) => s.id === dest.id);
+  const swapWith = dir === "up" ? idx - 1 : idx + 1;
+  if (swapWith < 0 || swapWith >= siblings.length) {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const a = siblings[idx];
+  const b = siblings[swapWith];
+  await prisma.$transaction([
+    prisma.dayTripDestination.update({ where: { id: a.id }, data: { orderIndex: b.orderIndex } }),
+    prisma.dayTripDestination.update({ where: { id: b.id }, data: { orderIndex: a.orderIndex } }),
+  ]);
+
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripDestMoved: "1" }));
+}
+
+export async function createDayTripPhotoUrlAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const dayTripId = formData.get("dayTripId");
+  const urlRaw = formData.get("url");
+  const captionRaw = formData.get("caption");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!dayTripId || typeof dayTripId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const url = typeof urlRaw === "string" ? urlRaw.trim() : "";
+  const caption = typeof captionRaw === "string" ? captionRaw.trim() : "";
+  if (!url) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripPhotoError: "missing-url" }));
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripPhotoError: "bad-url" }));
+    }
+  } catch {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripPhotoError: "bad-url" }));
+  }
+
+  const prisma = getPrisma();
+  const ok = await assertDayTripForItinerary(dayTripId, itineraryId);
+  if (!ok) redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripPhotoError: "bad-trip" }));
+
+  const existingCount = await prisma.dayTripPhoto.count({ where: { dayTripId } });
+  if (existingCount >= MAX_DAY_TRIP_PHOTOS) {
+    redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripPhotoError: "max-photos" }));
+  }
+
+  const currentMax = await prisma.dayTripPhoto.aggregate({
+    where: { dayTripId },
+    _max: { orderIndex: true },
+  });
+  const nextIndex = (currentMax._max.orderIndex ?? -1) + 1;
+
+  await prisma.dayTripPhoto.create({
+    data: {
+      dayTripId,
+      orderIndex: nextIndex,
+      url,
+      caption: caption || null,
+    },
+  });
+
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripPhotoSaved: "1" }));
+}
+
+export async function deleteDayTripPhotoAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const photoId = formData.get("photoId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!photoId || typeof photoId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  const prisma = getPrisma();
+  const photo = await prisma.dayTripPhoto.findUnique({
+    where: { id: photoId },
+    select: { id: true, dayTrip: { select: { stop: { select: { itineraryId: true } } } } },
+  });
+  if (!photo || photo.dayTrip.stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "day-trips"));
+  }
+
+  await prisma.dayTripPhoto.delete({ where: { id: photoId } });
+  redirect(adminItineraryHref(itineraryId, "day-trips", { dayTripPhotoDeleted: "1" }));
 }

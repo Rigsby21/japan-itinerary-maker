@@ -50,6 +50,53 @@ model Itinerary {
   budgetLines    ItineraryBudgetLine[]
 }
 
+// --- Day trips (multi-leg from a stop; public + admin) ---
+
+model DayTrip {
+  id               String   @id @default(cuid())
+  stopId           String
+  stop             ItineraryStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  orderIndex       Int      @default(0)
+  title            String
+  shortDescription String?
+  description      String?  @db.Text
+  durationText     String?
+  costNote         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  destinations DayTripDestination[]
+  photos       DayTripPhoto[]
+
+  @@index([stopId])
+}
+
+model DayTripDestination {
+  id         String  @id @default(cuid())
+  dayTripId  String
+  dayTrip    DayTrip @relation(fields: [dayTripId], references: [id], onDelete: Cascade)
+  orderIndex Int     @default(0)
+  placeName  String
+  lat        Float
+  lng        Float
+  notes      String?
+
+  @@index([dayTripId])
+}
+
+model DayTripPhoto {
+  id          String   @id @default(cuid())
+  dayTripId   String
+  dayTrip     DayTrip  @relation(fields: [dayTripId], references: [id], onDelete: Cascade)
+  orderIndex  Int      @default(0)
+  url         String?
+  storagePath String?
+  caption     String?
+  createdAt   DateTime @default(now())
+
+  @@index([dayTripId])
+}
+
 model ItineraryTravelTip {
   id          String    @id @default(cuid())
   itineraryId String
@@ -87,6 +134,7 @@ model ItineraryStop {
   notes       String?
   createdAt   DateTime  @default(now())
   pois        Poi[]
+  dayTrips    DayTrip[]
 }
 
 // --- Phase 3 prep: custom POI markers + types + photo gallery ---

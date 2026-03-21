@@ -20,6 +20,8 @@ type Props = {
   stopLat: number | null;
   stopLng: number | null;
   stopPlaceName: string;
+  /** Shown on the navy stop pin, e.g. "1st", "2nd" (itinerary stop order). */
+  stopOrdinalLabel: string;
   markerTypes: AdminPoiPickMarkerType[];
   existingPois: AdminPoiPickExistingPoi[];
 };
@@ -49,6 +51,7 @@ export function AdminPoiPickMapForm({
   stopLat,
   stopLng,
   stopPlaceName,
+  stopOrdinalLabel,
   markerTypes,
   existingPois,
 }: Props) {
@@ -133,11 +136,21 @@ export function AdminPoiPickMapForm({
       stopLat={stopLat}
       stopLng={stopLng}
       stopPlaceName={stopPlaceName}
+      stopOrdinalLabel={stopOrdinalLabel}
       markerTypes={markerTypes}
       existingPois={existingPois}
       apiKey={apiKey}
     />
   );
+}
+
+function stopPinOrdinalLabel(text: string): google.maps.MarkerLabel {
+  return {
+    text,
+    color: "#ffffff",
+    fontSize: text.length > 3 ? "8px" : "9px",
+    fontWeight: "700",
+  };
 }
 
 function MapPoiFormInner({
@@ -146,6 +159,7 @@ function MapPoiFormInner({
   stopLat,
   stopLng,
   stopPlaceName,
+  stopOrdinalLabel,
   markerTypes,
   existingPois,
   apiKey,
@@ -172,7 +186,7 @@ function MapPoiFormInner({
     [existingPois],
   );
 
-  const mapDepsKey = `${stopId}:${hasStopCoords ? `${stopLat},${stopLng}` : "n"}:${poisKey}`;
+  const mapDepsKey = `${stopId}:${stopOrdinalLabel}:${hasStopCoords ? `${stopLat},${stopLng}` : "n"}:${poisKey}`;
 
   useEffect(() => {
     if (!apiKey || !mapRef.current) return;
@@ -204,6 +218,7 @@ function MapPoiFormInner({
             position: { lat: stopLat!, lng: stopLng! },
             map,
             title: `Stop: ${stopPlaceName}`,
+            label: stopPinOrdinalLabel(stopOrdinalLabel),
             zIndex: 1,
             icon: {
               path: google.maps.SymbolPath.CIRCLE,

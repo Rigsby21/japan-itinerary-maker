@@ -2,18 +2,22 @@
 
 import { useState, type ReactNode } from "react";
 
-type TabId = "itinerary" | "tips" | "budget";
+type TabId = "itinerary" | "daytrips" | "tips" | "budget";
 
 export function ItineraryPublicTabs({
   showTips,
   showBudget,
+  showDayTrips,
   itineraryPanel,
+  dayTripsPanel,
   tipsPanel,
   budgetPanel,
 }: {
   showTips: boolean;
   showBudget: boolean;
+  showDayTrips: boolean;
   itineraryPanel: ReactNode;
+  dayTripsPanel: ReactNode;
   tipsPanel: ReactNode;
   budgetPanel: ReactNode;
 }) {
@@ -41,20 +45,29 @@ export function ItineraryPublicTabs({
         aria-label="Itinerary sections"
       >
         {tabBtn("itinerary", "Itinerary")}
+        {showDayTrips && tabBtn("daytrips", "Day trips")}
         {showTips && tabBtn("tips", "Travel tips")}
         {showBudget && tabBtn("budget", "Budget")}
       </div>
 
-      <div role="tabpanel" hidden={tab !== "itinerary"} className={tab === "itinerary" ? "" : "hidden"}>
-        {itineraryPanel}
-      </div>
-      {showTips && (
-        <div role="tabpanel" hidden={tab !== "tips"} className={tab === "tips" ? "" : "hidden"}>
+      {/* Mount only the active panel so Google Maps get a real layout (display:none breaks map tiles). */}
+      {tab === "itinerary" && (
+        <div role="tabpanel" aria-label="Itinerary">
+          {itineraryPanel}
+        </div>
+      )}
+      {showDayTrips && tab === "daytrips" && (
+        <div role="tabpanel" aria-label="Day trips">
+          {dayTripsPanel}
+        </div>
+      )}
+      {showTips && tab === "tips" && (
+        <div role="tabpanel" aria-label="Travel tips">
           {tipsPanel}
         </div>
       )}
-      {showBudget && (
-        <div role="tabpanel" hidden={tab !== "budget"} className={tab === "budget" ? "" : "hidden"}>
+      {showBudget && tab === "budget" && (
+        <div role="tabpanel" aria-label="Budget">
           {budgetPanel}
         </div>
       )}

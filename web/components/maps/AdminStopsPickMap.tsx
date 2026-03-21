@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import { createItineraryStopAction } from "@/lib/actions/adminItinerary";
+import { englishOrdinal } from "@/lib/englishOrdinal";
 
 export type AdminStopsPickMapStop = {
   id: string;
@@ -84,15 +85,31 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
         mapInst.current = map;
 
         const bounds = new google.maps.LatLngBounds();
-        for (const p of pins) {
+        for (let i = 0; i < stops.length; i++) {
+          const p = stops[i];
+          if (
+            p.lat == null ||
+            p.lng == null ||
+            !Number.isFinite(p.lat) ||
+            !Number.isFinite(p.lng)
+          ) {
+            continue;
+          }
           bounds.extend({ lat: p.lat, lng: p.lng });
+          const ord = englishOrdinal(i + 1);
           const m = new google.maps.Marker({
             position: { lat: p.lat, lng: p.lng },
             map,
-            title: `${p.placeName} (day ${p.dayNumber})`,
+            title: `${ord} stop — ${p.placeName} (day ${p.dayNumber})`,
+            label: {
+              text: ord,
+              color: "#ffffff",
+              fontSize: ord.length > 3 ? "8px" : "9px",
+              fontWeight: "700",
+            },
             icon: {
               path: google.maps.SymbolPath.CIRCLE,
-              scale: 9,
+              scale: 11,
               fillColor: "#1e3a8a",
               fillOpacity: 0.9,
               strokeColor: "#ffffff",

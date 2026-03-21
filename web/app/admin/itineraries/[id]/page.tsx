@@ -19,13 +19,15 @@ import {
   updateTravelTipAction,
 } from "@/lib/actions/adminItinerary";
 import { BUDGET_CURRENCIES } from "@/lib/budgetCurrencies";
-import { MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
+import { englishOrdinal } from "@/lib/englishOrdinal";
+import { MAX_DAY_TRIP_PHOTOS, MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
 import { loadItineraryTipsBudgetAndCurrency } from "@/lib/itineraries";
 import {
   adminItineraryHref,
   resolveAdminItineraryTab,
   type AdminItineraryTab,
 } from "@/lib/adminItineraryUrl";
+import { AdminDayTripsPanel } from "@/components/admin/AdminDayTripsPanel";
 import { AdminPoiPickMapForm } from "@/components/maps/AdminPoiPickMapForm";
 import { AdminStopsPickMap } from "@/components/maps/AdminStopsPickMap";
 
@@ -61,6 +63,18 @@ export default async function AdminItineraryPage({
     stopDeleted?: string;
     stopError?: string;
     itineraryError?: string;
+    dayTripSaved?: string;
+    dayTripUpdated?: string;
+    dayTripDeleted?: string;
+    dayTripMoved?: string;
+    dayTripError?: string;
+    dayTripDestSaved?: string;
+    dayTripDestDeleted?: string;
+    dayTripDestMoved?: string;
+    dayTripDestError?: string;
+    dayTripPhotoSaved?: string;
+    dayTripPhotoDeleted?: string;
+    dayTripPhotoError?: string;
   }>;
 }) {
   await requireAdmin();
@@ -108,6 +122,39 @@ export default async function AdminItineraryPage({
               },
             },
           },
+          dayTrips: {
+            orderBy: { orderIndex: "asc" },
+            select: {
+              id: true,
+              orderIndex: true,
+              title: true,
+              shortDescription: true,
+              description: true,
+              durationText: true,
+              costNote: true,
+              destinations: {
+                orderBy: { orderIndex: "asc" },
+                select: {
+                  id: true,
+                  orderIndex: true,
+                  placeName: true,
+                  lat: true,
+                  lng: true,
+                  notes: true,
+                },
+              },
+              photos: {
+                orderBy: { orderIndex: "asc" },
+                select: {
+                  id: true,
+                  url: true,
+                  storagePath: true,
+                  caption: true,
+                  orderIndex: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -141,11 +188,24 @@ export default async function AdminItineraryPage({
   const stopDeleted = query?.stopDeleted === "1";
   const stopError = query?.stopError ?? null;
   const itineraryError = query?.itineraryError ?? null;
+  const dayTripSaved = query?.dayTripSaved === "1";
+  const dayTripUpdated = query?.dayTripUpdated === "1";
+  const dayTripDeleted = query?.dayTripDeleted === "1";
+  const dayTripMoved = query?.dayTripMoved === "1";
+  const dayTripError = query?.dayTripError ?? null;
+  const dayTripDestSaved = query?.dayTripDestSaved === "1";
+  const dayTripDestDeleted = query?.dayTripDestDeleted === "1";
+  const dayTripDestMoved = query?.dayTripDestMoved === "1";
+  const dayTripDestError = query?.dayTripDestError ?? null;
+  const dayTripPhotoSaved = query?.dayTripPhotoSaved === "1";
+  const dayTripPhotoDeleted = query?.dayTripPhotoDeleted === "1";
+  const dayTripPhotoError = query?.dayTripPhotoError ?? null;
   const activeTab = resolveAdminItineraryTab(query);
 
   const tabItems: { id: AdminItineraryTab; label: string }[] = [
     { id: "stops", label: "Stops" },
     { id: "markers", label: "Marker points" },
+    { id: "day-trips", label: "Day trips" },
     { id: "budget", label: "Budget" },
     { id: "tips", label: "Travel tips" },
   ];
@@ -324,6 +384,83 @@ export default async function AdminItineraryPage({
                 : itineraryError === "slug-taken"
                   ? "Could not assign a unique address — try a slightly different title."
                   : "Could not save itinerary settings."}
+          </p>
+        )}
+
+        {dayTripSaved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day trip created.
+          </p>
+        )}
+        {dayTripUpdated && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day trip updated.
+          </p>
+        )}
+        {dayTripDeleted && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day trip deleted.
+          </p>
+        )}
+        {dayTripMoved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day trip order updated.
+          </p>
+        )}
+        {dayTripError && (
+          <p className="mb-4 rounded bg-red-100 px-3 py-2 text-sm text-red-900 dark:bg-red-900/30 dark:text-red-200">
+            {dayTripError === "missing-title"
+              ? "Day trip title is required."
+              : dayTripError === "stop-needs-coords"
+                ? "Add coordinates to the stop before creating a day trip."
+                : dayTripError === "bad-stop" || dayTripError === "bad-trip"
+                  ? "Invalid stop or day trip."
+                  : "Could not save day trip."}
+          </p>
+        )}
+        {dayTripDestSaved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Destination added.
+          </p>
+        )}
+        {dayTripDestDeleted && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Destination removed.
+          </p>
+        )}
+        {dayTripDestMoved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Destination order updated.
+          </p>
+        )}
+        {dayTripDestError && (
+          <p className="mb-4 rounded bg-red-100 px-3 py-2 text-sm text-red-900 dark:bg-red-900/30 dark:text-red-200">
+            {dayTripDestError === "missing-place"
+              ? "Destination name is required."
+              : dayTripDestError === "bad-coords"
+                ? "Enter valid latitude and longitude."
+                : "Could not save destination."}
+          </p>
+        )}
+        {dayTripPhotoSaved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day trip photo added.
+          </p>
+        )}
+        {dayTripPhotoDeleted && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day trip photo deleted.
+          </p>
+        )}
+        {dayTripPhotoError && (
+          <p className="mb-4 rounded bg-red-100 px-3 py-2 text-sm text-red-900 dark:bg-red-900/30 dark:text-red-200">
+            {dayTripPhotoError === "missing-url"
+              ? "Photo URL is required."
+              : dayTripPhotoError === "bad-url"
+                ? "Photo URL must start with http:// or https://"
+                : dayTripPhotoError === "max-photos"
+                  ? `Each day trip allows at most ${MAX_DAY_TRIP_PHOTOS} photos.`
+                  : "Could not save photo."}
           </p>
         )}
 
@@ -717,7 +854,7 @@ export default async function AdminItineraryPage({
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {itinerary.stops.map((s) => (
+            {itinerary.stops.map((s, stopIndex) => (
               <li key={s.id} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
                 <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-100 pb-2 dark:border-zinc-800">
                   <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
@@ -737,6 +874,7 @@ export default async function AdminItineraryPage({
                     stopLat={s.lat}
                     stopLng={s.lng}
                     stopPlaceName={s.placeName}
+                    stopOrdinalLabel={englishOrdinal(stopIndex + 1)}
                     markerTypes={itinerary.markerTypes}
                     existingPois={s.pois.map((p) => ({
                       id: p.id,
@@ -883,6 +1021,10 @@ export default async function AdminItineraryPage({
           </>
         )}
 
+        {activeTab === "day-trips" && (
+          <AdminDayTripsPanel itineraryId={itinerary.id} stops={itinerary.stops} />
+        )}
+
         {activeTab === "stops" && (
           <>
             <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Stops</div>
@@ -893,8 +1035,15 @@ export default async function AdminItineraryPage({
                 className="font-medium text-zinc-700 underline dark:text-zinc-300"
               >
                 Marker points
-              </Link>{" "}
-              tab.
+              </Link>
+              . Multi-leg day trips:{" "}
+              <Link
+                href={adminItineraryHref(itinerary.id, "day-trips")}
+                className="font-medium text-zinc-700 underline dark:text-zinc-300"
+              >
+                Day trips
+              </Link>
+              .
             </p>
             <div className="mb-6">
               <AdminStopsPickMap

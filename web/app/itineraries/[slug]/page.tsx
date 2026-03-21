@@ -13,10 +13,20 @@ import {
   publicItineraryStopElementId,
 } from "@/components/maps/publicItineraryPoiAnchor";
 import type { ItineraryMapMarker } from "@/components/maps/ItineraryReadOnlyMap";
+import { ItineraryPublicTabs } from "@/components/ItineraryPublicTabs";
 import { getPublicItineraryBySlug } from "@/lib/itineraries";
 import { publicPoiPhotoUrl } from "@/lib/poiPhotoUrl";
 
 export const dynamic = "force-dynamic";
+
+function formatBudgetAmount(amountStr: string, currency: string) {
+  const n = Number(amountStr);
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: currency === "JPY" || currency === "KRW" ? 0 : 2,
+  }).format(n);
+}
 
 function englishOrdinal(n: number): string {
   const v = n % 100;
@@ -181,6 +191,81 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
       </ol>
     );
 
+  const showTips = itinerary.travelTips.length > 0;
+  const showBudget = itinerary.budgetLines.length > 0;
+  const useTabs = showTips || showBudget;
+
+  const itineraryPanel =
+    mapMarkers.length > 0 ? (
+      <ItineraryMapWithListFocus
+        markers={mapMarkers}
+        overviewStops={overviewStops}
+        routingStops={routingStops}
+        mapHeader={mapHeader}
+      >
+        {stopsSection}
+      </ItineraryMapWithListFocus>
+    ) : (
+      stopsSection
+    );
+
+  const budgetTotal = itinerary.budgetLines.reduce((sum, l) => sum + Number(l.amount), 0);
+
+  const tipsPanel = (
+    <ul className="flex flex-col gap-4">
+      {itinerary.travelTips.map((t) => (
+        <li
+          key={t.id}
+          className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-4 dark:border-zinc-700 dark:bg-zinc-800/40"
+        >
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{t.title}</h2>
+          {t.body ? (
+            <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">{t.body}</p>
+          ) : null}
+        </li>
+      ))}
+    </ul>
+  );
+
+  const budgetPanel = (
+    <div className="space-y-3">
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        Amounts are estimates in {itinerary.budgetCurrency}. Totals are sums of the lines below.
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-700">
+        <table className="w-full min-w-[280px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800/60">
+              <th className="px-3 py-2 font-semibold text-zinc-900 dark:text-zinc-50">Category</th>
+              <th className="px-3 py-2 font-semibold text-zinc-900 dark:text-zinc-50">Amount</th>
+              <th className="px-3 py-2 font-semibold text-zinc-900 dark:text-zinc-50">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itinerary.budgetLines.map((line) => (
+              <tr key={line.id} className="border-b border-zinc-100 dark:border-zinc-800">
+                <td className="px-3 py-2 text-zinc-900 dark:text-zinc-50">{line.category}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-zinc-800 dark:text-zinc-200">
+                  {formatBudgetAmount(line.amount, itinerary.budgetCurrency)}
+                </td>
+                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{line.note ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-zinc-50 font-semibold dark:bg-zinc-800/60">
+              <td className="px-3 py-2 text-zinc-900 dark:text-zinc-50">Total</td>
+              <td className="whitespace-nowrap px-3 py-2 text-zinc-900 dark:text-zinc-50">
+                {formatBudgetAmount(String(budgetTotal), itinerary.budgetCurrency)}
+              </td>
+              <td className="px-3 py-2" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 dark:bg-black">
       <div className="w-full max-w-2xl rounded-lg border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
@@ -200,17 +285,16 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
           Created: {new Date(itinerary.createdAt).toLocaleDateString()}
         </div>
 
-        {mapMarkers.length > 0 ? (
-          <ItineraryMapWithListFocus
-            markers={mapMarkers}
-            overviewStops={overviewStops}
-            routingStops={routingStops}
-            mapHeader={mapHeader}
-          >
-            {stopsSection}
-          </ItineraryMapWithListFocus>
+        {useTabs ? (
+          <ItineraryPublicTabs
+            showTips={showTips}
+            showBudget={showBudget}
+            itineraryPanel={itineraryPanel}
+            tipsPanel={tipsPanel}
+            budgetPanel={budgetPanel}
+          />
         ) : (
-          stopsSection
+          itineraryPanel
         )}
       </div>
     </div>

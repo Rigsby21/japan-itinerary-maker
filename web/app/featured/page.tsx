@@ -33,6 +33,25 @@ export default async function FeaturedPage() {
                 {it.description && (
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{it.description}</p>
                 )}
+                {(it.hasTravelTips || it.hasBudget) && (
+                  <p className="mt-2 flex flex-wrap gap-2 text-xs">
+                    {it.hasTravelTips && it.hasBudget && (
+                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                        Includes tips &amp; budget
+                      </span>
+                    )}
+                    {it.hasTravelTips && !it.hasBudget && (
+                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                        Includes travel tips
+                      </span>
+                    )}
+                    {!it.hasTravelTips && it.hasBudget && (
+                      <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                        Includes budget
+                      </span>
+                    )}
+                  </p>
+                )}
                 <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
                   Stops: {it.stopsCount} • Created: {new Date(it.createdAt).toLocaleDateString()}
                 </p>

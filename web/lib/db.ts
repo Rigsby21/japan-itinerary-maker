@@ -10,8 +10,20 @@ import { PrismaClient as PrismaClientConstructor } from "@/app/generated/prisma/
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
+/** Models added after an older generate; stale global client has no delegate → runtime errors. */
+function prismaHasBudgetAndTipsDelegates(p: PrismaClient): boolean {
+  const anyP = p as unknown as { itineraryBudgetLine?: unknown; itineraryTravelTip?: unknown };
+  return anyP.itineraryBudgetLine != null && anyP.itineraryTravelTip != null;
+}
+
 export function getPrisma(): PrismaClient {
-  if (globalForPrisma.prisma) return globalForPrisma.prisma;
+  const cached = globalForPrisma.prisma;
+  if (cached) {
+    if (prismaHasBudgetAndTipsDelegates(cached)) return cached;
+    // Dev: Next/Turbopack can keep a global PrismaClient from before `prisma generate`.
+    if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = undefined;
+    else return cached;
+  }
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error("DATABASE_URL is not set. Copy .env.example to .env and add your database URL.");
@@ -21,6 +33,9 @@ export function getPrisma(): PrismaClient {
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
-  if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = client;
+  // Only cache a client that matches the generated schema; avoids a dev loop if generate is missing.
+  if (process.env.NODE_ENV !== "production" && prismaHasBudgetAndTipsDelegates(client)) {
+    globalForPrisma.prisma = client;
+  }
   return client;
 }

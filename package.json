@@ -5,6 +5,9 @@
     "dev": "npm run dev --prefix web",
     "build": "npm run build --prefix web",
     "start": "npm run start --prefix web",
-    "lint": "npm run lint --prefix web"
+    "lint": "npm run lint --prefix web",
+    "db:generate": "npm run prisma:generate --prefix web",
+    "db:migrate": "npm run prisma:migrate --prefix web",
+    "db:migrate:dev": "npm run prisma:migrate:dev --prefix web"
   }
 }

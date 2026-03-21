@@ -33,18 +33,45 @@ model User {
 }
 
 model Itinerary {
-  id          String          @id @default(cuid())
+  id             String               @id @default(cuid())
+  title          String
+  slug           String               @unique
+  description    String?
+  authorId       String
+  author         User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  isFeatured     Boolean              @default(false)
+  isPublic       Boolean              @default(true)
+  budgetCurrency String               @default("USD")
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  stops          ItineraryStop[]
+  markerTypes    MarkerType[]
+  travelTips     ItineraryTravelTip[]
+  budgetLines    ItineraryBudgetLine[]
+}
+
+model ItineraryTravelTip {
+  id          String    @id @default(cuid())
+  itineraryId String
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  orderIndex  Int       @default(0)
   title       String
-  slug        String          @unique
-  description String?
-  authorId    String
-  author      User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  isFeatured  Boolean         @default(false)
-  isPublic    Boolean         @default(true)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  stops       ItineraryStop[]
-  markerTypes MarkerType[]
+  body        String
+  createdAt   DateTime  @default(now())
+
+  @@index([itineraryId])
+}
+
+model ItineraryBudgetLine {
+  id          String    @id @default(cuid())
+  itineraryId String
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  orderIndex  Int       @default(0)
+  category    String
+  amount      Decimal   @db.Decimal(12, 2)
+  note        String?
+
+  @@index([itineraryId])
 }
 
 model ItineraryStop {

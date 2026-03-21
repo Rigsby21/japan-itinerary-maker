@@ -1,21 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PoiPhotoCarousel } from "@/components/PoiPhotoCarousel";
-import {
-  ItineraryMapWithListFocus,
-  PoiMapFocusArea,
-} from "@/components/maps/ItineraryMapWithListFocus";
+import { ItineraryMapWithListFocus } from "@/components/maps/ItineraryMapWithListFocus";
 import type { OverviewStopPin, RoutingStopPoint } from "@/components/maps/ItineraryOverviewRouteMap";
-import { StopPoiMapFilter } from "@/components/maps/StopPoiMapFilter";
-import { StopPoiMiniMap } from "@/components/maps/StopPoiMiniMap";
-import {
-  publicItineraryPoiElementId,
-  publicItineraryStopElementId,
-} from "@/components/maps/publicItineraryPoiAnchor";
+import { StopPoiBlock } from "@/components/maps/StopPoiBlock";
+import { publicItineraryStopElementId } from "@/components/maps/publicItineraryPoiAnchor";
 import type { ItineraryMapMarker } from "@/components/maps/ItineraryReadOnlyMap";
 import { ItineraryPublicTabs } from "@/components/ItineraryPublicTabs";
 import { getPublicItineraryBySlug } from "@/lib/itineraries";
-import { publicPoiPhotoUrl } from "@/lib/poiPhotoUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -93,9 +84,11 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
       <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Route overview</h2>
       <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
         Stops appear as navy pins; colored lines follow Google Directions between consecutive stops (one color per leg).
-        Choose driving, buses, trains, and/or walking above the map. Each stop below has its own POI map — use{" "}
-        <span className="font-medium text-zinc-600 dark:text-zinc-300">Markers on map</span> to show or hide POIs there
-        and on the mini-map. Click a stop pin to jump to that stop in the list; click POI text to zoom its stop’s POI map.
+        Choose driving, buses, trains, and/or walking above the map. Each stop below has its own POI mini-map; under the map,
+        use{" "}
+        <span className="font-medium text-zinc-600 dark:text-zinc-300">Marker types on map</span> to choose which types
+        appear on the map and in the POI details list (all types are on by default). Click a stop pin to jump to that stop
+        in the list; click POI text to zoom its stop’s POI map.
       </p>
     </>
   );
@@ -119,72 +112,17 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
             </div>
             {s.notes && <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{s.notes}</p>}
             {s.pois.length > 0 && (
-              <>
-                <StopPoiMapFilter
-                  pois={s.pois.map((p) => ({
-                    id: p.id,
-                    title: p.title,
-                    markerType: p.markerType,
-                  }))}
-                />
-                <StopPoiMiniMap
-                  pois={s.pois.map((p) => ({
-                    id: p.id,
-                    lat: p.lat,
-                    lng: p.lng,
-                    title: p.title,
-                    markerType: p.markerType,
-                  }))}
-                />
-              <ul className="mt-3 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
-                {s.pois.map((p) => {
-                  const photoItems = p.photos
-                    .map((ph) => {
-                      const url = publicPoiPhotoUrl(ph);
-                      if (!url) return null;
-                      return { url, caption: ph.caption };
-                    })
-                    .filter((x): x is { url: string; caption: string | null } => x != null);
-                  const carouselPhotos = photoItems.map((item, idx) => {
-                    const caption = item.caption?.trim();
-                    const label =
-                      caption || (photoItems.length > 1 ? `${p.title} (photo ${idx + 1})` : p.title);
-                    return { url: item.url, label };
-                  });
-                  return (
-                    <li
-                      key={p.id}
-                      id={publicItineraryPoiElementId(p.id)}
-                      className="scroll-mt-8 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <PoiMapFocusArea poiId={p.id} lat={p.lat} lng={p.lng}>
-                          <p>
-                            {p.markerType && (
-                              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                                [{p.markerType.name}]{" "}
-                              </span>
-                            )}
-                            <span className="text-zinc-900 dark:text-zinc-50">{p.title}</span>
-                            {p.description && (
-                              <span className="text-zinc-500 dark:text-zinc-500">
-                                {" "}
-                                — {p.description}
-                              </span>
-                            )}
-                          </p>
-                        </PoiMapFocusArea>
-                      </div>
-                      {carouselPhotos.length > 0 && (
-                        <div className="flex shrink-0 flex-wrap content-start sm:justify-end">
-                          <PoiPhotoCarousel photos={carouselPhotos} />
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-              </>
+              <StopPoiBlock
+                pois={s.pois.map((p) => ({
+                  id: p.id,
+                  title: p.title,
+                  description: p.description,
+                  lat: p.lat,
+                  lng: p.lng,
+                  markerType: p.markerType,
+                  photos: p.photos,
+                }))}
+              />
             )}
           </li>
         ))}

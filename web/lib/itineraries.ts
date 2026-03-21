@@ -166,7 +166,7 @@ export type PublicItineraryDetail = {
       description: string | null;
       lat: number;
       lng: number;
-      markerType: { name: string; colorHex: string } | null;
+      markerType: { id: string; name: string; colorHex: string } | null;
       photos: Array<{
         id: string;
         url: string | null;
@@ -211,7 +211,7 @@ export async function getPublicItineraryBySlug(slug: string): Promise<PublicItin
               description: true,
               lat: true,
               lng: true,
-              markerType: { select: { name: true, colorHex: true } },
+              markerType: { select: { id: true, name: true, colorHex: true } },
               photos: {
                 orderBy: { orderIndex: "asc" },
                 select: {

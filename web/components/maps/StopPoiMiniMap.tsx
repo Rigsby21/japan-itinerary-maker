@@ -13,7 +13,7 @@ export type StopPoiMiniMapPoi = {
   lat: number;
   lng: number;
   title: string;
-  markerType?: { name: string; colorHex?: string | null } | null;
+  markerType?: { id: string; name: string; colorHex?: string | null } | null;
 };
 
 type Props = {
@@ -58,8 +58,8 @@ export function StopPoiMiniMap({ pois }: Props) {
   if (markers.length === 0) {
     return (
       <div className="mt-3 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-3 py-4 text-center text-xs text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800/40 dark:text-zinc-400">
-        No POIs shown on the map for this stop. Turn on markers in{" "}
-        <span className="font-medium text-zinc-800 dark:text-zinc-200">Markers on map</span> above.
+        No POIs shown on the map for this stop. Choose one or more marker types in{" "}
+        <span className="font-medium text-zinc-800 dark:text-zinc-200">Marker types on map</span> below.
       </div>
     );
   }

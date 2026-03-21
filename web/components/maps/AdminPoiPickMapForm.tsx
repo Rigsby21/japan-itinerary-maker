@@ -33,6 +33,13 @@ function ensureMapsLoaderOptions(apiKey: string) {
   }
 }
 
+function paddedBoundsAroundStop(lat: number, lng: number, pad = 0.18): google.maps.LatLngBounds {
+  const b = new google.maps.LatLngBounds();
+  b.extend({ lat: lat + pad, lng: lng + pad });
+  b.extend({ lat: lat - pad, lng: lng - pad });
+  return b;
+}
+
 const DEFAULT_CENTER = { lat: 35.6762, lng: 139.6503 };
 const POI_DEFAULT_COLOR = "#7c3aed";
 
@@ -148,11 +155,14 @@ function MapPoiFormInner({
   const staticMarkersRef = useRef<google.maps.Marker[]>([]);
   const dragListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const pickMarkerRef = useRef<google.maps.Marker | null>(null);
+  const placeSearchInputRef = useRef<HTMLInputElement>(null);
 
   const [pickLat, setPickLat] = useState<number | null>(null);
   const [pickLng, setPickLng] = useState<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [loadError, setLoadError] = useState<"failed" | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const hasStopCoords =
     stopLat != null && stopLng != null && Number.isFinite(stopLat) && Number.isFinite(stopLng);
@@ -316,6 +326,101 @@ function MapPoiFormInner({
     };
   }, [mapReady, pickLat, pickLng]);
 
+  useEffect(() => {
+    if (!mapReady || !mapInst.current) return;
+    const input = placeSearchInputRef.current;
+    if (!input) return;
+
+    let cancelled = false;
+    let placeListener: google.maps.MapsEventListener | null = null;
+    let autocomplete: google.maps.places.Autocomplete | null = null;
+
+    ensureMapsLoaderOptions(apiKey);
+    importLibrary("places")
+      .then(() => {
+        if (cancelled || placeSearchInputRef.current !== input || !mapInst.current) return;
+
+        const ac = new google.maps.places.Autocomplete(input, {
+          fields: ["geometry", "formatted_address", "name"],
+          ...(hasStopCoords && stopLat != null && stopLng != null
+            ? { bounds: paddedBoundsAroundStop(stopLat, stopLng), strictBounds: false }
+            : {}),
+        });
+        ac.bindTo("bounds", mapInst.current);
+        autocomplete = ac;
+        placeListener = ac.addListener("place_changed", () => {
+          const place = ac.getPlace();
+          const loc = place.geometry?.location;
+          if (!loc) {
+            setSearchError("Pick a suggestion from the list, or use Search.");
+            return;
+          }
+          setSearchError(null);
+          mapInst.current?.panTo(loc);
+          mapInst.current?.setZoom(16);
+          setPickLat(loc.lat());
+          setPickLng(loc.lng());
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSearchError("Could not load place suggestions. Check Places API for this key.");
+      });
+
+    return () => {
+      cancelled = true;
+      placeListener?.remove();
+      if (autocomplete) google.maps.event.clearInstanceListeners(autocomplete);
+    };
+  }, [mapReady, apiKey, hasStopCoords, stopLat, stopLng, mapDepsKey]);
+
+  const runPlaceSearch = () => {
+    const q = placeSearchInputRef.current?.value.trim() ?? "";
+    setSearchError(null);
+    if (!q) {
+      setSearchError("Enter a place or address.");
+      return;
+    }
+    const map = mapInst.current;
+    if (!map) {
+      setSearchError("Map is still loading.");
+      return;
+    }
+    setSearching(true);
+    ensureMapsLoaderOptions(apiKey);
+    importLibrary("geocoding")
+      .then(() => {
+        const geocoder = new google.maps.Geocoder();
+        const req: google.maps.GeocoderRequest = { address: q };
+        if (hasStopCoords && stopLat != null && stopLng != null) {
+          req.bounds = paddedBoundsAroundStop(stopLat, stopLng);
+        }
+        geocoder.geocode(req, (results, status) => {
+          setSearching(false);
+          if (status !== "OK" || !results?.[0]?.geometry?.location) {
+            setSearchError(
+              status === "ZERO_RESULTS"
+                ? "No matches. Try a different search."
+                : status === "REQUEST_DENIED"
+                  ? "Geocoding blocked — enable Geocoding API for this key in Google Cloud."
+                  : "Search failed. Check the address and try again.",
+            );
+            return;
+          }
+          const loc = results[0].geometry.location;
+          const lat = loc.lat();
+          const lng = loc.lng();
+          map.panTo(loc);
+          map.setZoom(16);
+          setPickLat(lat);
+          setPickLng(lng);
+        });
+      })
+      .catch(() => {
+        setSearching(false);
+        setSearchError("Could not load search.");
+      });
+  };
+
   const hasPick = pickLat != null && pickLng != null;
 
   if (loadError === "failed") {
@@ -327,15 +432,39 @@ function MapPoiFormInner({
   }
 
   return (
-    <form action={createPoiAction} className="flex flex-col gap-3">
-      <input type="hidden" name="itineraryId" value={itineraryId} />
-      <input type="hidden" name="stopId" value={stopId} />
-      <input type="hidden" name="lat" value={pickLat ?? ""} />
-      <input type="hidden" name="lng" value={pickLng ?? ""} />
-
+    <div className="flex flex-col gap-3">
       <p className="text-xs text-zinc-500 dark:text-zinc-500">
-        Click the map to place a new POI (blue = this stop, squares = existing POIs). Drag the orange pin to adjust.
+        Type to see place suggestions, pick one or use Search, or click the map (blue = this stop, squares = existing POIs).
+        Drag the orange pin to adjust.
       </p>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Search map</span>
+        <div className="flex flex-wrap items-stretch gap-2">
+          <input
+            ref={placeSearchInputRef}
+            type="search"
+            placeholder={
+              hasStopCoords
+                ? `e.g. café near ${stopPlaceName}…`
+                : "Address, landmark, or place name…"
+            }
+            className="min-w-[200px] flex-1 rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+            aria-label="Search for a place on the map"
+            aria-autocomplete="list"
+            disabled={searching}
+          />
+          <button
+            type="button"
+            onClick={runPlaceSearch}
+            disabled={!mapReady || searching}
+            className="rounded border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
+          >
+            {searching ? "Searching…" : "Search"}
+          </button>
+        </div>
+        {searchError && <p className="text-xs text-red-700 dark:text-red-300">{searchError}</p>}
+      </div>
 
       <div
         ref={mapRef}
@@ -343,15 +472,21 @@ function MapPoiFormInner({
         aria-label={`Pick POI location for ${stopPlaceName}`}
       />
 
-      {hasPick ? (
-        <p className="text-xs text-zinc-600 dark:text-zinc-400">
-          Selected: {pickLat!.toFixed(6)}, {pickLng!.toFixed(6)}
-        </p>
-      ) : (
-        <p className="text-xs text-amber-800 dark:text-amber-200/90">Click the map to set coordinates.</p>
-      )}
+      <form action={createPoiAction} className="flex flex-col gap-3">
+        <input type="hidden" name="itineraryId" value={itineraryId} />
+        <input type="hidden" name="stopId" value={stopId} />
+        <input type="hidden" name="lat" value={pickLat ?? ""} />
+        <input type="hidden" name="lng" value={pickLng ?? ""} />
 
-      <div className="flex flex-wrap items-end gap-3">
+        {hasPick ? (
+          <p className="text-xs text-zinc-600 dark:text-zinc-400">
+            Selected: {pickLat!.toFixed(6)}, {pickLng!.toFixed(6)}
+          </p>
+        ) : (
+          <p className="text-xs text-amber-800 dark:text-amber-200/90">Click the map to set coordinates.</p>
+        )}
+
+        <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Title</span>
           <input
@@ -407,6 +542,7 @@ function MapPoiFormInner({
           </button>
         )}
       </div>
-    </form>
+      </form>
+    </div>
   );
 }

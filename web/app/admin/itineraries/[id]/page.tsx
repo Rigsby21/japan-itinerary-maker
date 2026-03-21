@@ -5,7 +5,6 @@ import { getPrisma } from "@/lib/db";
 import {
   createBudgetLineAction,
   createPoiPhotoUrlAction,
-  createPoiAction,
   createMarkerTypeAction,
   createTravelTipAction,
   deleteItineraryStopAction,
@@ -27,6 +26,7 @@ import {
   resolveAdminItineraryTab,
   type AdminItineraryTab,
 } from "@/lib/adminItineraryUrl";
+import { AdminPoiPickMapForm } from "@/components/maps/AdminPoiPickMapForm";
 import { AdminStopsPickMap } from "@/components/maps/AdminStopsPickMap";
 
 export const dynamic = "force-dynamic";
@@ -731,70 +731,21 @@ export default async function AdminItineraryPage({
                 <div className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
                   <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">POIs</div>
 
-                  <form action={createPoiAction} className="flex flex-wrap items-end gap-3">
-                    <input type="hidden" name="itineraryId" value={itinerary.id} />
-                    <input type="hidden" name="stopId" value={s.id} />
-
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Title</span>
-                      <input
-                        name="title"
-                        placeholder="Ramen shop, viewpoint…"
-                        className="w-56 rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                      />
-                    </label>
-
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Marker type</span>
-                      <select
-                        name="markerTypeId"
-                        className="w-44 rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                        defaultValue="none"
-                      >
-                        <option value="none">None</option>
-                        {itinerary.markerTypes.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name} ({t.colorHex})
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Lat</span>
-                      <input
-                        name="lat"
-                        placeholder="35.710063"
-                        inputMode="decimal"
-                        className="w-32 rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Lng</span>
-                      <input
-                        name="lng"
-                        placeholder="139.810700"
-                        inputMode="decimal"
-                        className="w-32 rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                      />
-                    </label>
-
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Description (optional)</span>
-                      <input
-                        name="description"
-                        placeholder="What to do / tips…"
-                        className="w-72 rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-                      />
-                    </label>
-
-                    <button
-                      type="submit"
-                      className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-                    >
-                      Add POI
-                    </button>
-                  </form>
+                  <AdminPoiPickMapForm
+                    itineraryId={itinerary.id}
+                    stopId={s.id}
+                    stopLat={s.lat}
+                    stopLng={s.lng}
+                    stopPlaceName={s.placeName}
+                    markerTypes={itinerary.markerTypes}
+                    existingPois={s.pois.map((p) => ({
+                      id: p.id,
+                      title: p.title,
+                      lat: p.lat,
+                      lng: p.lng,
+                      colorHex: p.markerType?.colorHex ?? null,
+                    }))}
+                  />
 
                   {s.pois.length === 0 ? (
                     <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">No POIs yet.</p>

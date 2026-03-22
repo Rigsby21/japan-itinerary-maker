@@ -451,7 +451,7 @@ export function AdminDayTripPlannerMap({
           >
             {sortedTrips.map((t, i) => (
               <option key={t.id} value={t.id}>
-                Trip {i + 1}: {t.title}
+                Day trip {i + 1}: {t.title}
               </option>
             ))}
           </select>

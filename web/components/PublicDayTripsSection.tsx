@@ -28,8 +28,8 @@ export function PublicDayTripsSection({ stops }: { stops: Stop[] }) {
       <div>
         <TravelPrefCheckboxes prefs={prefs} setPref={setPref} compactNote />
         <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-          Routes use the same mode order as the itinerary overview (driving → buses → trains → walking). Navy circle = your
-          stop; numbered pins use the same leg colors as the overview, in order.
+          Same travel modes as the itinerary overview. Each map: navy = this day&apos;s base, one colored line to the first
+          trip stop, later stops as squares (matches the itinerary tab).
         </p>
       </div>
 
@@ -59,7 +59,7 @@ export function PublicDayTripsSection({ stops }: { stops: Stop[] }) {
                   className="rounded-md border border-zinc-100 bg-zinc-50/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/30"
                 >
                   <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                    Trip {tripIdx + 1}: {dt.title}
+                    Day trip {tripIdx + 1}: {dt.title}
                   </h3>
                   {dt.shortDescription && (
                     <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">{dt.shortDescription}</p>
@@ -83,6 +83,7 @@ export function PublicDayTripsSection({ stops }: { stops: Stop[] }) {
                           placeName: d.placeName,
                           orderIndex: d.orderIndex,
                         }))}
+                        colorIndex={tripIdx}
                         travelPrefsSource="shared"
                       />
                       <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-zinc-600 dark:text-zinc-400">

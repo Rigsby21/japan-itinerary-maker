@@ -6,6 +6,10 @@ import { ItineraryMapShellContext, PoiMapFocusArea } from "@/components/maps/Iti
 import { publicItineraryPoiElementId } from "@/components/maps/publicItineraryPoiAnchor";
 import { StopPoiMapFilter, type StopPoiMapFilterPoi } from "@/components/maps/StopPoiMapFilter";
 import { StopPoiMiniMap, type StopPoiMiniMapPoi } from "@/components/maps/StopPoiMiniMap";
+import {
+  StopPoiAndDayTripMap,
+  type StopPoiAndDayTripMapDayTrip,
+} from "@/components/maps/StopPoiAndDayTripMap";
 import { publicPoiPhotoUrl } from "@/lib/poiPhotoUrl";
 
 export type StopPoiBlockPoi = {
@@ -22,9 +26,18 @@ export type StopPoiBlockPoi = {
   }>;
 };
 
-type Props = { pois: StopPoiBlockPoi[] };
+type Props = {
+  pois: StopPoiBlockPoi[];
+  /** When set and day trips have destinations, the map draws one route from this pin to each trip’s first stop only. */
+  stopBase?: { lat: number; lng: number; placeName: string } | null;
+  dayTrips?: StopPoiAndDayTripMapDayTrip[];
+};
 
-export function StopPoiBlock({ pois }: Props) {
+function dayTripsHaveDestinations(trips: StopPoiAndDayTripMapDayTrip[] | undefined): boolean {
+  return (trips ?? []).some((t) => t.destinations.length > 0);
+}
+
+export function StopPoiBlock({ pois, stopBase, dayTrips }: Props) {
   const ctx = useContext(ItineraryMapShellContext);
 
   const filterPois: StopPoiMapFilterPoi[] = useMemo(
@@ -58,11 +71,20 @@ export function StopPoiBlock({ pois }: Props) {
     return pois.filter((p) => ctx.isPoiOnMap(p.id));
   }, [pois, ctx]);
 
+  const useDayTripLayer =
+    stopBase != null && dayTrips != null && dayTripsHaveDestinations(dayTrips);
+
+  if (pois.length === 0 && !useDayTripLayer) return null;
+
   return (
     <>
-      <StopPoiMiniMap pois={miniPois} />
-      <StopPoiMapFilter pois={filterPois} />
-      {ctx && visiblePois.length === 0 ? (
+      {useDayTripLayer ? (
+        <StopPoiAndDayTripMap stopOrigin={stopBase!} dayTrips={dayTrips!} pois={miniPois} />
+      ) : (
+        <StopPoiMiniMap pois={miniPois} />
+      )}
+      {filterPois.length > 0 && <StopPoiMapFilter pois={filterPois} />}
+      {ctx && pois.length > 0 && visiblePois.length === 0 ? (
         <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
           No POIs match the selected marker types. Turn types back on below the map to see details and photos.
         </p>

@@ -83,8 +83,10 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
       <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
         Days appear as numbered navy pins (1st, 2nd, … for each <em>distinct</em> place in trip order; days sharing the
         same coordinates use one pin). Colored lines follow Google Directions between consecutive days (one color per leg).
-        Choose driving, buses, trains, and/or walking above the map. Each day below has its own POI mini-map; under the map,
-        use{" "}
+        Choose driving, buses, trains, and/or walking above the map. Days with a <span className="font-medium">day trip</span>{" "}
+        show a single route from that day&apos;s base to each trip&apos;s main stop (plus square markers for extra stops and
+        POIs). Other days have a POI-only map;
+        under the map, use{" "}
         <span className="font-medium text-zinc-600 dark:text-zinc-300">Marker types on map</span> to choose which types
         appear on the map and in the POI details list (all types are on by default). Click a day pin to jump to that day
         in the list; click POI text to zoom that day’s POI map.
@@ -117,8 +119,35 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
               )}
             </div>
             {s.notes && <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{s.notes}</p>}
-            {s.pois.length > 0 && (
+            {s.dayTrips.length > 0 && (
+              <p className="mt-2 rounded-md border border-teal-200/90 bg-teal-50/90 px-3 py-2 text-xs leading-relaxed text-teal-950 dark:border-teal-800/50 dark:bg-teal-950/40 dark:text-teal-100">
+                <span className="font-semibold">Day trip{s.dayTrips.length > 1 ? "s" : ""}</span> on this day:{" "}
+                {s.dayTrips.map((dt) => dt.title).join(" · ")}. The map draws one route from this day&apos;s base (navy pin)
+                to each trip&apos;s first stop; other trip stops and marker POIs appear as squares without connecting lines.
+              </p>
+            )}
+            {(s.pois.length > 0 ||
+              (s.lat != null &&
+                s.lng != null &&
+                s.dayTrips.some((dt) => dt.destinations.length > 0))) && (
               <StopPoiBlock
+                stopBase={
+                  s.lat != null && s.lng != null
+                    ? { lat: s.lat, lng: s.lng, placeName: s.placeName }
+                    : null
+                }
+                dayTrips={s.dayTrips.map((dt) => ({
+                  id: dt.id,
+                  orderIndex: dt.orderIndex,
+                  title: dt.title,
+                  destinations: dt.destinations.map((d) => ({
+                    id: d.id,
+                    orderIndex: d.orderIndex,
+                    lat: d.lat,
+                    lng: d.lng,
+                    placeName: d.placeName,
+                  })),
+                }))}
                 pois={s.pois.map((p) => ({
                   id: p.id,
                   title: p.title,

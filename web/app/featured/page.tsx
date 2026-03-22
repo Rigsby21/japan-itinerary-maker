@@ -33,7 +33,7 @@ export default async function FeaturedPage() {
                 {it.description && (
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{it.description}</p>
                 )}
-                {(it.hasTravelTips || it.hasBudget) && (
+                {(it.hasTravelTips || it.hasBudget || it.hasDayTrips) && (
                   <p className="mt-2 flex flex-wrap gap-2 text-xs">
                     {it.hasTravelTips && it.hasBudget && (
                       <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
@@ -48,6 +48,11 @@ export default async function FeaturedPage() {
                     {!it.hasTravelTips && it.hasBudget && (
                       <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
                         Includes budget
+                      </span>
+                    )}
+                    {it.hasDayTrips && (
+                      <span className="rounded-full bg-teal-100 px-2.5 py-0.5 font-medium text-teal-900 dark:bg-teal-950/80 dark:text-teal-100">
+                        Includes day trips
                       </span>
                     )}
                   </p>

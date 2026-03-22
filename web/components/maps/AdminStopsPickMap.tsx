@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import {
   updateItineraryStopLocationAction,
+  updateItineraryStopLocationCoordsOnlyAction,
   updateItineraryStopsLocationBulkAction,
+  updateItineraryStopsLocationBulkCoordsOnlyAction,
 } from "@/lib/actions/adminItinerary";
 import { clusterStopsByMapPosition } from "@/lib/clusterStopsByMapPosition";
 import { englishOrdinal } from "@/lib/englishOrdinal";
@@ -57,6 +59,25 @@ export function AdminStopsPickMap({
   const [stopId, setStopId] = useState<string>("");
 
   const useBulkUi = allowBulkDayTargets && stops.length > 1;
+
+  const allStopsHaveCoordinates =
+    stops.length > 0 &&
+    stops.every(
+      (s) =>
+        s.lat != null &&
+        s.lng != null &&
+        Number.isFinite(s.lat) &&
+        Number.isFinite(s.lng),
+    );
+
+  const saveAction = allStopsHaveCoordinates
+    ? useBulkUi
+      ? updateItineraryStopsLocationBulkCoordsOnlyAction
+      : updateItineraryStopLocationCoordsOnlyAction
+    : useBulkUi
+      ? updateItineraryStopsLocationBulkAction
+      : updateItineraryStopLocationAction;
+
   const stopIdsKey = useMemo(() => stops.map((s) => s.id).join(","), [stops]);
   const [bulkTargetIds, setBulkTargetIds] = useState<Set<string>>(() => new Set(stops.map((s) => s.id)));
 
@@ -271,10 +292,7 @@ export function AdminStopsPickMap({
   }
 
   return (
-    <form
-      action={useBulkUi ? updateItineraryStopsLocationBulkAction : updateItineraryStopLocationAction}
-      className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-    >
+    <form action={saveAction} className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
       <input type="hidden" name="itineraryId" value={itineraryId} />
       {!useBulkUi && <input type="hidden" name="stopId" value={stopId} />}
       {useBulkUi &&
@@ -398,36 +416,43 @@ export function AdminStopsPickMap({
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1 sm:col-span-2">
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Place name</span>
-          <input
-            name="placeName"
-            type="text"
-            required
-            placeholder="e.g. Senso-ji"
-            className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-          />
-        </label>
-        <label className="flex flex-col gap-1 sm:col-span-2">
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Area / neighborhood (optional)</span>
-          <input
-            name="stopAreaLabel"
-            type="text"
-            placeholder="e.g. Asakusa"
-            className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-          />
-        </label>
-        <label className="flex flex-col gap-1 sm:col-span-2">
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Notes (optional)</span>
-          <textarea
-            name="notes"
-            rows={2}
-            placeholder={pickerLabels === "stop" ? "Short note for this stop…" : "Short note for this day…"}
-            className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-          />
-        </label>
-      </div>
+      {allStopsHaveCoordinates ? (
+        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+          Every {pickerLabels === "stop" ? "stop" : "day"} here already has a pin. Edit the title, area, and notes from each
+          day&apos;s card above — this map only moves coordinates.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Place name</span>
+            <input
+              name="placeName"
+              type="text"
+              required
+              placeholder="e.g. Senso-ji"
+              className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Area / neighborhood (optional)</span>
+            <input
+              name="stopAreaLabel"
+              type="text"
+              placeholder="e.g. Asakusa"
+              className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Notes (optional)</span>
+            <textarea
+              name="notes"
+              rows={2}
+              placeholder={pickerLabels === "stop" ? "Short note for this stop…" : "Short note for this day…"}
+              className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+            />
+          </label>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <button

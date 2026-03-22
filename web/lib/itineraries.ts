@@ -13,6 +13,7 @@ export type FeaturedItineraryListItem = {
   daysCount: number;
   hasTravelTips: boolean;
   hasBudget: boolean;
+  hasDayTrips: boolean;
 };
 
 /**
@@ -39,6 +40,17 @@ export async function getFeaturedItineraries(): Promise<FeaturedItineraryListIte
   const ids = rows.map((r) => r.id);
   const hasTips = new Set<string>();
   const hasBudget = new Set<string>();
+  const hasDayTrips = new Set<string>();
+
+  try {
+    const tripRows = await prisma.dayTrip.findMany({
+      where: { stop: { itineraryId: { in: ids } } },
+      select: { stop: { select: { itineraryId: true } } },
+    });
+    for (const t of tripRows) hasDayTrips.add(t.stop.itineraryId);
+  } catch {
+    /* schema / DB */
+  }
 
   try {
     const tipRows = await prisma.$queryRaw<Array<{ itineraryId: string }>>(
@@ -75,6 +87,7 @@ export async function getFeaturedItineraries(): Promise<FeaturedItineraryListIte
     daysCount: r.stops.length,
     hasTravelTips: hasTips.has(r.id),
     hasBudget: hasBudget.has(r.id),
+    hasDayTrips: hasDayTrips.has(r.id),
   }));
 }
 

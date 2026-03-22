@@ -337,6 +337,86 @@ export async function updateItineraryStopsLocationBulkAction(formData: FormData)
   redirect(adminItineraryHref(itineraryId, "cities", { stopSaved: "1" }));
 }
 
+/** Update only coordinates; place name, area, and notes stay as-is. */
+export async function updateItineraryStopLocationCoordsOnlyAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const stopId = formData.get("stopId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!stopId || typeof stopId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const rawLat = formData.get("lat");
+  const rawLng = formData.get("lng");
+  const lat = typeof rawLat === "string" ? Number(rawLat) : NaN;
+  const lng = typeof rawLng === "string" ? Number(rawLng) : NaN;
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-coordinates" }));
+  }
+
+  const prisma = getPrisma();
+  const stop = await prisma.itineraryStop.findUnique({
+    where: { id: stopId },
+    select: { itineraryId: true },
+  });
+  if (!stop || stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-stop" }));
+  }
+
+  await prisma.itineraryStop.update({
+    where: { id: stopId },
+    data: { lat, lng },
+  });
+
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+
+  redirect(adminItineraryHref(itineraryId, "cities", { stopSaved: "1" }));
+}
+
+/** Bulk: set the same lat/lng on selected stops only; each stop keeps its own place/area/notes. */
+export async function updateItineraryStopsLocationBulkCoordsOnlyAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+
+  const rawIds = formData.getAll("stopIds");
+  const stopIds = [
+    ...new Set(
+      rawIds.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()),
+    ),
+  ];
+
+  if (stopIds.length === 0) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bulk-no-days" }));
+  }
+
+  const rawLat = formData.get("lat");
+  const rawLng = formData.get("lng");
+  const lat = typeof rawLat === "string" ? Number.parseFloat(rawLat) : NaN;
+  const lng = typeof rawLng === "string" ? Number.parseFloat(rawLng) : NaN;
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-coordinates" }));
+  }
+
+  const prisma = getPrisma();
+  const found = await prisma.itineraryStop.findMany({
+    where: { id: { in: stopIds }, itineraryId },
+    select: { id: true },
+  });
+  if (found.length !== stopIds.length) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-stop" }));
+  }
+
+  await prisma.$transaction(stopIds.map((id) => prisma.itineraryStop.update({ where: { id }, data: { lat, lng } })));
+
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+
+  redirect(adminItineraryHref(itineraryId, "cities", { stopSaved: "1" }));
+}
+
 export async function updateItineraryStopCalendarDateAction(formData: FormData) {
   await requireAdmin();
   const itineraryId = formData.get("itineraryId");

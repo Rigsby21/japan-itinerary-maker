@@ -12,7 +12,20 @@ import {
   fillOpacityForZoom,
   itineraryDayTripDestLabel,
   itineraryMapCircleIcon,
+  strokeOpacityForFillOpacity,
 } from "@/lib/itineraryMapVisuals";
+
+function squareDestIcon(fillColor: string, scale: number, fillOpacity: number): google.maps.Symbol {
+  return {
+    path: "M -1,-1 L 1,-1 L 1,1 L -1,1 Z",
+    scale,
+    fillColor,
+    fillOpacity,
+    strokeColor: "#ffffff",
+    strokeOpacity: strokeOpacityForFillOpacity(fillOpacity),
+    strokeWeight: 2,
+  };
+}
 
 let mapsLoaderOptionsApplied = false;
 
@@ -33,8 +46,10 @@ export type DayTripRouteMapDestination = {
 
 type Props = {
   origin: { lat: number; lng: number };
-  /** Ordered: first leg origin→destinations[0], then chained */
+  /** Ordered stops for this trip. Only origin→first stop gets a directions line; later stops are square markers (same as itinerary tab). */
   destinations: DayTripRouteMapDestination[];
+  /** Picks the overview palette color for this trip’s line and markers (e.g. 0 = first trip on a day). */
+  colorIndex?: number;
   /** Use the same travel prefs as the public itinerary overview (requires provider). */
   travelPrefsSource?: "shared" | "local";
   /** When `travelPrefsSource` is local, initial checkboxes state */
@@ -71,6 +86,7 @@ function useTravelPrefsPair(source: "shared" | "local"): {
 export function DayTripRouteMap({
   origin,
   destinations,
+  colorIndex = 0,
   travelPrefsSource = "shared",
   className = "",
 }: Props) {
@@ -92,6 +108,11 @@ export function DayTripRouteMap({
   const destKey = useMemo(
     () => orderedDest.map((d) => `${d.id}:${d.orderIndex}:${d.lat}:${d.lng}`).join("|"),
     [orderedDest],
+  );
+
+  const tripColor = useMemo(
+    () => ITINERARY_ROUTE_LEG_COLORS[colorIndex % ITINERARY_ROUTE_LEG_COLORS.length],
+    [colorIndex],
   );
 
   /** Maps created while the container had display:none need a resize once layout is real. */
@@ -127,28 +148,28 @@ export function DayTripRouteMap({
       markers: [],
     };
 
-    const legs: Array<{
+    const base = { lat: origin.lat, lng: origin.lng };
+    const directionsLegs: Array<{
       origin: google.maps.LatLngLiteral;
       destination: google.maps.LatLngLiteral;
       color: string;
-    }> = [];
-    let prev: google.maps.LatLngLiteral = { lat: origin.lat, lng: origin.lng };
-    for (let i = 0; i < orderedDest.length; i++) {
-      const d = orderedDest[i];
-      legs.push({
-        origin: prev,
-        destination: { lat: d.lat, lng: d.lng },
-        color: ITINERARY_ROUTE_LEG_COLORS[i % ITINERARY_ROUTE_LEG_COLORS.length],
-      });
-      prev = { lat: d.lat, lng: d.lng };
-    }
+    }> =
+      orderedDest.length > 0
+        ? [
+            {
+              origin: base,
+              destination: { lat: orderedDest[0].lat, lng: orderedDest[0].lng },
+              color: tripColor,
+            },
+          ]
+        : [];
 
     ensureMapsLoaderOptions(apiKey);
 
     const run = async () => {
       if (!cancelled) {
         setLoadError(null);
-        setRoutesLoading(legs.length > 0);
+        setRoutesLoading(directionsLegs.length > 0);
         setRouteNote(null);
       }
 
@@ -178,7 +199,12 @@ export function DayTripRouteMap({
       });
       mapInstanceRef.current = map;
 
-      const markerStyles: Array<{
+      const circleMarkerStyles: Array<{
+        marker: google.maps.Marker;
+        fill: string;
+        scale: number;
+      }> = [];
+      const squareMarkerStyles: Array<{
         marker: google.maps.Marker;
         fill: string;
         scale: number;
@@ -187,8 +213,11 @@ export function DayTripRouteMap({
       const applyMarkerOpacities = () => {
         const z = map.getZoom() ?? 12;
         const fo = fillOpacityForZoom(z);
-        for (const s of markerStyles) {
+        for (const s of circleMarkerStyles) {
           s.marker.setIcon(itineraryMapCircleIcon(s.fill, s.scale, fo));
+        }
+        for (const s of squareMarkerStyles) {
+          s.marker.setIcon(squareDestIcon(s.fill, s.scale, fo));
         }
       };
 
@@ -205,24 +234,38 @@ export function DayTripRouteMap({
         zIndex: 3,
       });
       disposables.markers.push(originMarker);
-      markerStyles.push({ marker: originMarker, fill: ITINERARY_STOP_PIN_COLOR, scale: originScale });
+      circleMarkerStyles.push({ marker: originMarker, fill: ITINERARY_STOP_PIN_COLOR, scale: originScale });
 
       orderedDest.forEach((d, idx) => {
         bounds.extend({ lat: d.lat, lng: d.lng });
         const label = String(idx + 1);
-        const legColor = ITINERARY_ROUTE_LEG_COLORS[idx % ITINERARY_ROUTE_LEG_COLORS.length];
-        const destScale = 10;
         const destFo = fillOpacityForZoom(map.getZoom() ?? 12);
-        const m = new google.maps.Marker({
-          position: { lat: d.lat, lng: d.lng },
-          map,
-          title: `${label}. ${d.placeName}`,
-          label: itineraryDayTripDestLabel(label),
-          icon: itineraryMapCircleIcon(legColor, destScale, destFo),
-          zIndex: 4,
-        });
-        disposables.markers.push(m);
-        markerStyles.push({ marker: m, fill: legColor, scale: destScale });
+        if (idx === 0) {
+          const destScale = 10;
+          const m = new google.maps.Marker({
+            position: { lat: d.lat, lng: d.lng },
+            map,
+            title: `${label}. ${d.placeName}`,
+            label: itineraryDayTripDestLabel(label),
+            icon: itineraryMapCircleIcon(tripColor, destScale, destFo),
+            zIndex: 4,
+          });
+          disposables.markers.push(m);
+          circleMarkerStyles.push({ marker: m, fill: tripColor, scale: destScale });
+        } else {
+          const scale = 8;
+          const m = new google.maps.Marker({
+            position: { lat: d.lat, lng: d.lng },
+            map,
+            title: `${label}. ${d.placeName}`,
+            label: itineraryDayTripDestLabel(label),
+            icon: squareDestIcon(tripColor, scale, destFo),
+            zIndex: 5,
+            cursor: "default",
+          });
+          disposables.markers.push(m);
+          squareMarkerStyles.push({ marker: m, fill: tripColor, scale });
+        }
       });
 
       zoomListener = map.addListener("zoom_changed", applyMarkerOpacities);
@@ -230,7 +273,7 @@ export function DayTripRouteMap({
       const directionsService = new google.maps.DirectionsService();
       let anyRouteFailed = false;
 
-      for (const leg of legs) {
+      for (const leg of directionsLegs) {
         if (cancelled) break;
         const result = await routeLegWithDirectionsService(
           directionsService,
@@ -290,7 +333,7 @@ export function DayTripRouteMap({
       });
 
       if (anyRouteFailed) {
-        setRouteNote("Some legs couldn’t be routed — lighter straight lines show those gaps.");
+        setRouteNote("The day-trip line couldn’t be fully routed — a lighter straight line shows that gap.");
       }
       setRoutesLoading(false);
     };
@@ -312,7 +355,7 @@ export function DayTripRouteMap({
       for (const m of disposables.markers) m.setMap(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- destKey fingerprints orderedDest contents
-  }, [apiKey, origin.lat, origin.lng, destKey, travelPrefs]);
+  }, [apiKey, origin.lat, origin.lng, destKey, travelPrefs, tripColor]);
 
   if (orderedDest.length === 0) {
     return (

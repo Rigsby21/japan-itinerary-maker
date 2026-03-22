@@ -58,7 +58,7 @@ export function StopPoiMiniMap({ pois }: Props) {
   if (markers.length === 0) {
     return (
       <div className="mt-3 rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-3 py-4 text-center text-xs text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800/40 dark:text-zinc-400">
-        No POIs shown on the map for this stop. Choose one or more marker types in{" "}
+        No POIs shown on the map for this day. Choose one or more marker types in{" "}
         <span className="font-medium text-zinc-800 dark:text-zinc-200">Marker types on map</span> below.
       </div>
     );
@@ -66,7 +66,7 @@ export function StopPoiMiniMap({ pois }: Props) {
 
   return (
     <div className="mt-3">
-      <p className="mb-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300">POIs on map (this stop)</p>
+      <p className="mb-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300">POIs on map (this day)</p>
       <ItineraryReadOnlyMap
         markers={markers}
         listFocusRequest={focusForThisStop}

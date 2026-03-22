@@ -7,6 +7,7 @@ import { TravelPrefCheckboxes } from "@/components/maps/TravelPrefCheckboxes";
 import { publicItineraryStopElementId } from "@/components/maps/publicItineraryPoiAnchor";
 import { publicDayTripPhotoUrl } from "@/lib/dayTripPhotoUrl";
 import type { PublicItineraryDetail } from "@/lib/itineraries";
+import { formatCalendarDateForPublic } from "@/lib/itineraryCalendarDate";
 
 type Stop = PublicItineraryDetail["stops"][number];
 
@@ -39,11 +40,16 @@ export function PublicDayTripsSection({ stops }: { stops: Stop[] }) {
           className="scroll-mt-8 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
         >
           <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-            Day {s.dayNumber} • Stop {s.orderIndex + 1}: {s.placeName}
+            {s.cityName} · Day {s.dayIndexInCity}: {s.placeName}
+            {s.calendarDate != null && (
+              <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">
+                · {formatCalendarDateForPublic(s.calendarDate)}
+              </span>
+            )}
           </h2>
           {s.lat == null || s.lng == null ? (
             <p className="mt-2 text-sm text-amber-800 dark:text-amber-200/90">
-              This stop needs coordinates to show day trip maps on the public page.
+              This day needs coordinates to show day trip maps on the public page.
             </p>
           ) : (
             <ul className="mt-4 flex flex-col gap-6">

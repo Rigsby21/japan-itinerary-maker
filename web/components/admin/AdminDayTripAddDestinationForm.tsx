@@ -81,7 +81,7 @@ export function AdminDayTripAddDestinationForm({
       new google.maps.Marker({
         position: { lat: originLat, lng: originLng },
         map,
-        title: "This stop (start of day trip)",
+        title: "This itinerary day (start of day trip)",
         icon: itineraryMapCircleIcon(ITINERARY_STOP_PIN_COLOR, 11, 0.95),
         zIndex: 3,
       });
@@ -168,7 +168,7 @@ export function AdminDayTripAddDestinationForm({
       <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Add destination</span>
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        Click the map to set the pin (navy = this stop). Place name fills from the address when possible; edit if you
+        Click the map to set the pin (navy = this day’s base location). Place name fills from the address when possible; edit if you
         like.
       </p>
 

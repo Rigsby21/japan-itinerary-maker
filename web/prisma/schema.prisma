@@ -20,6 +20,12 @@ enum Role {
   ADMIN
 }
 
+/// Single-stop cities: one main stop per city; use day trips + POIs for detail. Legacy: multiple days (stops) in one city.
+enum ItineraryCityKind {
+  SINGLE_STOP
+  LEGACY_MULTI_DAY
+}
+
 model User {
   id                String       @id @default(cuid())
   email             String       @unique
@@ -42,18 +48,34 @@ model Itinerary {
   isFeatured     Boolean              @default(false)
   isPublic       Boolean              @default(true)
   budgetCurrency String               @default("USD")
+  /// When set, each stop’s `calendarDate` is kept in trip order: start, start+1 day, … Clearing it removes auto mode and clears all stop calendar dates.
+  tripStartDate  DateTime?            @db.Date
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
+  cities         ItineraryCity[]
   stops          ItineraryStop[]
   markerTypes    MarkerType[]
   travelTips     ItineraryTravelTip[]
   budgetLines    ItineraryBudgetLine[]
 }
 
+/// A city / region visit; stops are calendar days (see ItineraryStop). Kind controls whether multiple days are allowed.
+model ItineraryCity {
+  id          String            @id @default(cuid())
+  itineraryId String
+  itinerary   Itinerary         @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  name        String
+  sortOrder   Int               @default(0)
+  kind        ItineraryCityKind @default(SINGLE_STOP)
+  stops       ItineraryStop[]
+
+  @@index([itineraryId])
+}
+
 // --- Day trips (multi-leg from a stop; public + admin) ---
 
 model DayTrip {
-  id               String   @id @default(cuid())
+  id               String        @id @default(cuid())
   stopId           String
   stop             ItineraryStop @relation(fields: [stopId], references: [id], onDelete: Cascade)
   orderIndex       Int      @default(0)
@@ -122,19 +144,29 @@ model ItineraryBudgetLine {
 }
 
 model ItineraryStop {
-  id          String    @id @default(cuid())
-  itineraryId String
-  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
-  dayNumber   Int
-  orderIndex  Int
-  placeName   String
-  city        String?
-  lat         Float?
-  lng         Float?
-  notes       String?
-  createdAt   DateTime  @default(now())
-  pois        Poi[]
-  dayTrips    DayTrip[]
+  id             String        @id @default(cuid())
+  itineraryId    String
+  itinerary      Itinerary     @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  cityId         String
+  city           ItineraryCity @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  /// 1-based day within this city (Day 1, Day 2, …).
+  dayIndexInCity Int
+  orderIndex     Int           @default(0)
+  placeName      String
+  /// Optional extra location hint (DB column `city`); distinct from {@link ItineraryCity}.
+  stopAreaLabel  String?       @map("city")
+  lat            Float?
+  lng            Float?
+  /// Optional calendar day for this row (e.g. “March 4”); not required. Stored as DATE (no time-of-day).
+  calendarDate   DateTime?     @db.Date
+  notes          String?
+  createdAt      DateTime      @default(now())
+  pois           Poi[]
+  dayTrips       DayTrip[]
+
+  @@unique([cityId, dayIndexInCity])
+  @@index([itineraryId])
+  @@index([cityId])
 }
 
 // --- Phase 3 prep: custom POI markers + types + photo gallery ---

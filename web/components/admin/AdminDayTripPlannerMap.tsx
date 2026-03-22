@@ -30,8 +30,8 @@ export type PlannerDayTrip = {
 
 type Props = {
   itineraryId: string;
-  stopDayNumber: number;
-  stopOrderIndex: number;
+  cityName: string;
+  dayIndexInCity: number;
   stopPlaceName: string;
   originLat: number;
   originLng: number;
@@ -63,8 +63,8 @@ function geocodeLabel(geocoder: google.maps.Geocoder, lat: number, lng: number):
 
 export function AdminDayTripPlannerMap({
   itineraryId,
-  stopDayNumber,
-  stopOrderIndex,
+  cityName,
+  dayIndexInCity,
   stopPlaceName,
   originLat,
   originLng,
@@ -243,7 +243,7 @@ export function AdminDayTripPlannerMap({
       const originMarker = new google.maps.Marker({
         position: { lat: originLat, lng: originLng },
         map,
-        title: `This stop — Day ${stopDayNumber}, stop ${stopOrderIndex + 1}: ${stopPlaceName}`,
+        title: `This day — ${cityName} · Day ${dayIndexInCity}: ${stopPlaceName}`,
         icon: itineraryMapCircleIcon(ITINERARY_STOP_PIN_COLOR, originScale, originFo),
         zIndex: 3,
       });
@@ -406,8 +406,8 @@ export function AdminDayTripPlannerMap({
     selectedDayTripId,
     travelPrefs,
     itineraryId,
-    stopDayNumber,
-    stopOrderIndex,
+    cityName,
+    dayIndexInCity,
     stopPlaceName,
     router,
   ]);
@@ -430,10 +430,10 @@ export function AdminDayTripPlannerMap({
 
   return (
     <div className="space-y-2 rounded-md border border-zinc-200 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/20">
-      <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Route planner (this stop)</div>
+      <div className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Route planner (this itinerary day)</div>
       <p className="text-xs text-zinc-600 dark:text-zinc-400">
         Same colored legs and navy start pin as the public overview. Choose which day trip you are building, then{" "}
-        <strong>click the map</strong> to add the next destination in order (stop → 1 → 2 → …). Enable{" "}
+        <strong>click the map</strong> to add the next destination in order (this day → 1 → 2 → …). Enable{" "}
         <strong>Geocoding API</strong> for automatic place names.
       </p>
 

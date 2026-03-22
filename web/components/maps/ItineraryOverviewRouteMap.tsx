@@ -276,8 +276,8 @@ export function ItineraryOverviewRouteMap({ stops, routingStops }: Props) {
 
       {stops.length === 1 && legsCount === 0 && (
         <p className="text-xs text-zinc-600 dark:text-zinc-400">
-          Add another stop with a location to see directions between stops. Each leg uses the next color in the sequence
-          on the map.
+          Add another day with a location to see directions between days. Each leg uses the next color in the sequence on
+          the map.
         </p>
       )}
 
@@ -285,7 +285,7 @@ export function ItineraryOverviewRouteMap({ stops, routingStops }: Props) {
 
       {legsCount > 1 && (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          Each colored segment is one leg to the next stop. For each leg we try your selected modes in order:{" "}
+          Each colored segment is one leg to the next day. For each leg we try your selected modes in order:{" "}
           <span className="font-medium text-zinc-600 dark:text-zinc-300">driving → buses → trains → walking</span>{" "}
           (skipping any you turned off). Buses and trains use Google transit with preferred vehicle types; exact lines
           still depend on what Google returns.

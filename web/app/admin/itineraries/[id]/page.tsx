@@ -3,10 +3,13 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { getPrisma } from "@/lib/db";
 import {
+  addDayToCityAction,
   createBudgetLineAction,
+  setItineraryCityKindAction,
   createPoiPhotoUrlAction,
   createMarkerTypeAction,
   createTravelTipAction,
+  deleteItineraryCityAction,
   deleteItineraryStopAction,
   deleteBudgetLineAction,
   deletePoiPhotoAction,
@@ -15,19 +18,23 @@ import {
   deleteTravelTipAction,
   updateBudgetCurrencyAction,
   updateBudgetLineAction,
-  updateItineraryVisibilityAction,
+  updateItineraryStopCalendarDateAction,
   updateTravelTipAction,
 } from "@/lib/actions/adminItinerary";
 import { BUDGET_CURRENCIES } from "@/lib/budgetCurrencies";
 import { englishOrdinal } from "@/lib/englishOrdinal";
 import { MAX_DAY_TRIP_PHOTOS, MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
+import { formatCalendarDateForPublic, formatDateForDateInput } from "@/lib/itineraryCalendarDate";
 import { loadItineraryTipsBudgetAndCurrency } from "@/lib/itineraries";
 import {
   adminItineraryHref,
   resolveAdminItineraryTab,
   type AdminItineraryTab,
 } from "@/lib/adminItineraryUrl";
+import { AdminAddCityPanel } from "@/components/admin/AdminAddCityPanel";
 import { AdminDayTripsPanel } from "@/components/admin/AdminDayTripsPanel";
+import { AdminItineraryGeneralSettingsPanel } from "@/components/admin/AdminItineraryGeneralSettingsPanel";
+import { AdminStopDayDetailsPanel } from "@/components/admin/AdminStopDayDetailsPanel";
 import { AdminPoiPickMapForm } from "@/components/maps/AdminPoiPickMapForm";
 import { AdminStopsPickMap } from "@/components/maps/AdminStopsPickMap";
 
@@ -60,8 +67,15 @@ export default async function AdminItineraryPage({
     budgetLineDeleted?: string;
     budgetError?: string;
     stopSaved?: string;
+    stopDetailsSaved?: string;
+    stopCalendarSaved?: string;
     stopDeleted?: string;
     stopError?: string;
+    citySaved?: string;
+    cityDeleted?: string;
+    cityError?: string;
+    cityKindUpdated?: string;
+    dayAdded?: string;
     itineraryError?: string;
     dayTripSaved?: string;
     dayTripUpdated?: string;
@@ -92,65 +106,77 @@ export default async function AdminItineraryPage({
       isFeatured: true,
       isPublic: true,
       updatedAt: true,
+      tripStartDate: true,
       markerTypes: {
         orderBy: { createdAt: "asc" },
         select: { id: true, name: true, colorHex: true },
       },
-      stops: {
-        orderBy: [{ dayNumber: "asc" }, { orderIndex: "asc" }],
+      cities: {
+        orderBy: { sortOrder: "asc" },
         select: {
           id: true,
-          dayNumber: true,
-          orderIndex: true,
-          placeName: true,
-          city: true,
-          lat: true,
-          lng: true,
-          notes: true,
-          pois: {
-            orderBy: { createdAt: "asc" },
+          name: true,
+          sortOrder: true,
+          kind: true,
+          stops: {
+            orderBy: { dayIndexInCity: "asc" },
             select: {
               id: true,
-              title: true,
-              description: true,
+              cityId: true,
+              dayIndexInCity: true,
+              orderIndex: true,
+              placeName: true,
+              stopAreaLabel: true,
               lat: true,
               lng: true,
-              markerType: { select: { id: true, name: true, colorHex: true } },
-              photos: {
-                orderBy: { orderIndex: "asc" },
-                select: { id: true, url: true, caption: true, orderIndex: true },
-              },
-            },
-          },
-          dayTrips: {
-            orderBy: { orderIndex: "asc" },
-            select: {
-              id: true,
-              orderIndex: true,
-              title: true,
-              shortDescription: true,
-              description: true,
-              durationText: true,
-              costNote: true,
-              destinations: {
-                orderBy: { orderIndex: "asc" },
+              calendarDate: true,
+              notes: true,
+              pois: {
+                orderBy: { createdAt: "asc" },
                 select: {
                   id: true,
-                  orderIndex: true,
-                  placeName: true,
+                  title: true,
+                  description: true,
                   lat: true,
                   lng: true,
-                  notes: true,
+                  markerType: { select: { id: true, name: true, colorHex: true } },
+                  photos: {
+                    orderBy: { orderIndex: "asc" },
+                    select: { id: true, url: true, caption: true, orderIndex: true },
+                  },
                 },
               },
-              photos: {
+              dayTrips: {
                 orderBy: { orderIndex: "asc" },
                 select: {
                   id: true,
-                  url: true,
-                  storagePath: true,
-                  caption: true,
                   orderIndex: true,
+                  title: true,
+                  shortDescription: true,
+                  description: true,
+                  durationText: true,
+                  costNote: true,
+                  destinations: {
+                    orderBy: { orderIndex: "asc" },
+                    select: {
+                      id: true,
+                      orderIndex: true,
+                      placeName: true,
+                      lat: true,
+                      lng: true,
+                      notes: true,
+                    },
+                  },
+                  photos: {
+                    orderBy: { orderIndex: "asc" },
+                    select: {
+                      id: true,
+                      url: true,
+                      storagePath: true,
+                      caption: true,
+                      orderIndex: true,
+                    },
+                  },
                 },
               },
             },
@@ -163,7 +189,16 @@ export default async function AdminItineraryPage({
   if (!base) notFound();
 
   const { budgetCurrency, travelTips, budgetLines } = await loadItineraryTipsBudgetAndCurrency(id);
-  const itinerary = { ...base, budgetCurrency, travelTips, budgetLines };
+  const stops = base.cities.flatMap((city) =>
+    city.stops.map((s) => ({ ...s, cityName: city.name })),
+  );
+  const itinerary = {
+    ...base,
+    stops,
+    budgetCurrency,
+    travelTips,
+    budgetLines,
+  };
 
   const saved = query?.saved === "1";
   const markerTypeSaved = query?.markerTypeSaved === "1";
@@ -185,8 +220,15 @@ export default async function AdminItineraryPage({
   const budgetLineDeleted = query?.budgetLineDeleted === "1";
   const budgetError = query?.budgetError ?? null;
   const stopSaved = query?.stopSaved === "1";
+  const stopDetailsSaved = query?.stopDetailsSaved === "1";
+  const stopCalendarSaved = query?.stopCalendarSaved === "1";
   const stopDeleted = query?.stopDeleted === "1";
   const stopError = query?.stopError ?? null;
+  const citySaved = query?.citySaved === "1";
+  const cityDeleted = query?.cityDeleted === "1";
+  const cityError = query?.cityError ?? null;
+  const cityKindUpdated = query?.cityKindUpdated === "1";
+  const dayAdded = query?.dayAdded === "1";
   const itineraryError = query?.itineraryError ?? null;
   const dayTripSaved = query?.dayTripSaved === "1";
   const dayTripUpdated = query?.dayTripUpdated === "1";
@@ -203,7 +245,7 @@ export default async function AdminItineraryPage({
   const activeTab = resolveAdminItineraryTab(query);
 
   const tabItems: { id: AdminItineraryTab; label: string }[] = [
-    { id: "stops", label: "Stops" },
+    { id: "cities", label: "Cities & days" },
     { id: "markers", label: "Marker points" },
     { id: "day-trips", label: "Day trips" },
     { id: "budget", label: "Budget" },
@@ -291,7 +333,7 @@ export default async function AdminItineraryPage({
               : poiError === "bad-coordinates"
                 ? "POI lat/lng must be valid numbers."
                 : poiError === "bad-stop"
-                  ? "That stop doesn't belong to this itinerary."
+                  ? "That day doesn't belong to this itinerary."
                   : "Could not save POI."}
           </p>
         )}
@@ -359,20 +401,78 @@ export default async function AdminItineraryPage({
                   : "Could not save budget."}
           </p>
         )}
+        {citySaved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            City added with empty days — set each day on the map below.
+          </p>
+        )}
+        {cityDeleted && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            City (and its days) removed.
+          </p>
+        )}
+        {dayAdded && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Extra day added to that city.
+          </p>
+        )}
+        {cityKindUpdated && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            City mode updated (single stop vs multi-day).
+          </p>
+        )}
+        {cityError && (
+          <p className="mb-4 rounded bg-red-100 px-3 py-2 text-sm text-red-900 dark:bg-red-900/30 dark:text-red-200">
+            {cityError === "missing-name"
+              ? "City name is required."
+              : cityError === "bad-days"
+                ? "Choose between 1 and 42 days for legacy multi-day cities."
+                : cityError === "single-stop-no-extra-days"
+                  ? "This city is in single-stop mode. Add another city for the next place, or use day trips / POIs for extra locations."
+                  : cityError === "kind-needs-one-stop"
+                    ? "Switch to single-stop mode only after this city has at most one day row (delete extra days first)."
+                    : cityError === "bad-city-kind"
+                      ? "Invalid city mode."
+                      : "Could not add city."}
+          </p>
+        )}
         {stopSaved && (
           <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
-            Stop added.
+            Day location saved.
+          </p>
+        )}
+        {stopDetailsSaved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day details saved (name, area, notes).
+          </p>
+        )}
+        {stopCalendarSaved && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Calendar date updated (leave empty and save to clear).
+          </p>
+        )}
+        {stopDeleted && (
+          <p className="mb-4 rounded bg-green-100 px-3 py-2 text-sm text-green-900 dark:bg-green-900/30 dark:text-green-200">
+            Day removed.
           </p>
         )}
         {stopError && (
           <p className="mb-4 rounded bg-red-100 px-3 py-2 text-sm text-red-900 dark:bg-red-900/30 dark:text-red-200">
             {stopError === "missing-place"
               ? "Place name is required."
-              : stopError === "bad-day"
-                ? "Day number must be 1 or greater."
-                : stopError === "bad-coordinates"
-                  ? "Click the map to set a location before saving."
-                  : "Could not save stop."}
+              : stopError === "bad-coordinates"
+                ? "Click the map to set a location before saving."
+                : stopError === "bad-stop"
+                  ? "That day does not belong to this itinerary."
+                  : stopError === "cannot-delete-only-stop"
+                    ? "Single-stop cities keep one main row. Delete the whole city instead, or switch to legacy multi-day after removing extra days."
+                    : stopError === "bulk-no-days"
+                      ? "Select at least one day to apply this location."
+                      : stopError === "bad-calendar-date"
+                        ? "Use a valid calendar date (YYYY-MM-DD), or leave the field empty to clear."
+                        : stopError === "trip-start-locks-dates"
+                          ? "Trip start date is set — stop dates are filled automatically. Clear trip start in itinerary settings to edit each day’s date by hand."
+                          : "Could not save day location."}
           </p>
         )}
         {itineraryError && (
@@ -383,7 +483,9 @@ export default async function AdminItineraryPage({
                 ? "Use a title with letters or numbers so we can build a web address (emoji-only titles won’t work)."
                 : itineraryError === "slug-taken"
                   ? "Could not assign a unique address — try a slightly different title."
-                  : "Could not save itinerary settings."}
+                  : itineraryError === "bad-trip-start-date"
+                    ? "Trip start must be a valid date (YYYY-MM-DD) or left empty."
+                    : "Could not save itinerary settings."}
           </p>
         )}
 
@@ -464,64 +566,21 @@ export default async function AdminItineraryPage({
           </p>
         )}
 
-        <form action={updateItineraryVisibilityAction} className="mb-6 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <input type="hidden" name="id" value={itinerary.id} />
-          <label className="mb-4 flex flex-col gap-1">
-            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Title</span>
-            <input
-              name="title"
-              type="text"
-              required
-              defaultValue={itinerary.title}
-              className="max-w-xl rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-            />
-          </label>
-          <label className="mb-4 flex flex-col gap-1">
-            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">Description</span>
-            <textarea
-              name="description"
-              rows={4}
-              placeholder="Short summary for listings and the public page…"
-              defaultValue={itinerary.description ?? ""}
-              className="max-w-xl rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-            />
-            <span className="text-xs text-zinc-500 dark:text-zinc-500">Optional. Clear the field and save to remove it.</span>
-          </label>
-          <p className="mb-4 text-xs text-zinc-500 dark:text-zinc-500">
-            The public link is built from the title when you save:{" "}
-            <span className="font-mono text-zinc-700 dark:text-zinc-400">/itineraries/{itinerary.slug}</span>. If you change
-            the title, the link may change too — bookmarks and shared URLs for the old address will stop working.
-          </p>
-          <div className="flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-sm text-zinc-900 dark:text-zinc-50">
-              <input
-                type="checkbox"
-                name="isFeatured"
-                defaultChecked={itinerary.isFeatured}
-                className="h-4 w-4"
-              />
-              Featured
-            </label>
-            <label className="flex items-center gap-2 text-sm text-zinc-900 dark:text-zinc-50">
-              <input
-                type="checkbox"
-                name="isPublic"
-                defaultChecked={itinerary.isPublic}
-                className="h-4 w-4"
-              />
-              Public
-            </label>
-            <button
-              type="submit"
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
-            >
-              Save
-            </button>
-          </div>
-          <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
-            Updated: {new Date(itinerary.updatedAt).toLocaleString()}
-          </p>
-        </form>
+        <AdminItineraryGeneralSettingsPanel
+          itineraryId={itinerary.id}
+          title={itinerary.title}
+          description={itinerary.description}
+          slug={itinerary.slug}
+          tripStartDateInput={formatDateForDateInput(itinerary.tripStartDate)}
+          tripStartDisplay={
+            itinerary.tripStartDate != null
+              ? formatCalendarDateForPublic(itinerary.tripStartDate)
+              : null
+          }
+          isFeatured={itinerary.isFeatured}
+          isPublic={itinerary.isPublic}
+          updatedAtLabel={new Date(itinerary.updatedAt).toLocaleString()}
+        />
 
         <nav
           className="mb-4 flex flex-wrap gap-1 border-b border-zinc-200 dark:border-zinc-700"
@@ -844,24 +903,21 @@ export default async function AdminItineraryPage({
           )}
         </div>
 
-        <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Points by stop</div>
+        <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Points by day</div>
         <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-500">
-          POIs and photos are grouped under each stop.
+          POIs and photos are grouped under each day (within a city).
         </p>
         {itinerary.stops.length === 0 ? (
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            No stops yet. When stops exist for this itinerary, add markers here.
+            No days yet. Add cities and days on the Cities & days tab, then add markers here.
           </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {itinerary.stops.map((s, stopIndex) => (
               <li key={s.id} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-100 pb-2 dark:border-zinc-800">
+                <div className="mb-2 border-b border-zinc-100 pb-2 dark:border-zinc-800">
                   <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                    Day {s.dayNumber} • Stop {s.orderIndex + 1}: {s.placeName}
-                  </div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-500">
-                    {s.city ?? "—"} • {s.lat?.toFixed(5) ?? "—"}, {s.lng?.toFixed(5) ?? "—"}
+                    {s.cityName} • Day {s.dayIndexInCity}: {s.placeName}
                   </div>
                 </div>
 
@@ -1025,79 +1081,183 @@ export default async function AdminItineraryPage({
           <AdminDayTripsPanel itineraryId={itinerary.id} stops={itinerary.stops} />
         )}
 
-        {activeTab === "stops" && (
+        {activeTab === "cities" && (
           <>
-            <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Stops</div>
-            <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-500">
-              Add day-by-day places using the map below. POIs, marker types, and photos are on the{" "}
-              <Link
-                href={adminItineraryHref(itinerary.id, "markers")}
-                className="font-medium text-zinc-700 underline dark:text-zinc-300"
-              >
-                Marker points
-              </Link>
-              . Multi-leg day trips:{" "}
-              <Link
-                href={adminItineraryHref(itinerary.id, "day-trips")}
-                className="font-medium text-zinc-700 underline dark:text-zinc-300"
-              >
-                Day trips
-              </Link>
-              .
-            </p>
-            <div className="mb-6">
-              <AdminStopsPickMap
-                itineraryId={itinerary.id}
-                stops={itinerary.stops.map((s) => ({
-                  id: s.id,
-                  lat: s.lat,
-                  lng: s.lng,
-                  placeName: s.placeName,
-                  dayNumber: s.dayNumber,
-                }))}
-              />
-            </div>
-            <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Saved stops</div>
-            {itinerary.stops.length === 0 ? (
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">No stops yet — add one with the map above.</p>
+            <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Cities & days</div>
+
+            <AdminAddCityPanel itineraryId={itinerary.id} />
+
+            <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Your cities</div>
+            {itinerary.cities.length === 0 ? (
+              <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                No cities yet — use <span className="font-medium text-zinc-800 dark:text-zinc-200">+ Add city</span> to create
+                one.
+              </p>
             ) : (
-              <ul className="flex flex-col gap-2">
-                {itinerary.stops.map((s) => (
-                  <li key={s.id} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <div className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-                        Day {s.dayNumber} • Stop {s.orderIndex + 1}: {s.placeName}
+              <ul className="flex flex-col gap-6">
+                {itinerary.cities.map((city) => (
+                  <li key={city.id} className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{city.name}</h3>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            city.kind === "SINGLE_STOP"
+                              ? "bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-100"
+                              : "bg-violet-100 text-violet-900 dark:bg-violet-900/40 dark:text-violet-100"
+                          }`}
+                        >
+                          {city.kind === "SINGLE_STOP" ? "Single stop" : "Multi-day (legacy)"}
+                        </span>
                       </div>
-                      <div className="text-xs text-zinc-500 dark:text-zinc-500">
-                        {s.city ?? "—"} • {s.lat?.toFixed(5) ?? "—"}, {s.lng?.toFixed(5) ?? "—"}
-                      </div>
+                      <form action={deleteItineraryCityAction}>
+                        <input type="hidden" name="itineraryId" value={itinerary.id} />
+                        <input type="hidden" name="cityId" value={city.id} />
+                        <button
+                          type="submit"
+                          className="text-xs font-medium text-red-700 underline dark:text-red-300"
+                        >
+                          Delete city
+                        </button>
+                      </form>
                     </div>
-                    {s.notes && (
-                      <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-400">{s.notes}</p>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {city.kind === "SINGLE_STOP" ? (
+                        <form action={setItineraryCityKindAction} className="inline">
+                          <input type="hidden" name="itineraryId" value={itinerary.id} />
+                          <input type="hidden" name="cityId" value={city.id} />
+                          <input type="hidden" name="kind" value="LEGACY_MULTI_DAY" />
+                          <button
+                            type="submit"
+                            className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                          >
+                            Switch to legacy multi-day…
+                          </button>
+                        </form>
+                      ) : city.stops.length <= 1 ? (
+                        <form action={setItineraryCityKindAction} className="inline">
+                          <input type="hidden" name="itineraryId" value={itinerary.id} />
+                          <input type="hidden" name="cityId" value={city.id} />
+                          <input type="hidden" name="kind" value="SINGLE_STOP" />
+                          <button
+                            type="submit"
+                            className="rounded border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                          >
+                            Switch to single-stop mode
+                          </button>
+                        </form>
+                      ) : (
+                        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                          Switch to single-stop after deleting extra days (keep at most one row).
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-4">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+                        Map — {city.name}
+                      </div>
+                      <AdminStopsPickMap
+                        key={city.id}
+                        itineraryId={itinerary.id}
+                        pickerLabels={city.kind === "SINGLE_STOP" ? "stop" : "day"}
+                        allowBulkDayTargets={city.kind === "LEGACY_MULTI_DAY"}
+                        stops={city.stops.map((s) => ({
+                          id: s.id,
+                          lat: s.lat,
+                          lng: s.lng,
+                          placeName: s.placeName,
+                          cityName: city.name,
+                          dayIndexInCity: s.dayIndexInCity,
+                        }))}
+                      />
+                    </div>
+
+                    {city.kind === "LEGACY_MULTI_DAY" && (
+                      <form action={addDayToCityAction} className="mt-3">
+                        <input type="hidden" name="itineraryId" value={itinerary.id} />
+                        <input type="hidden" name="cityId" value={city.id} />
+                        <button
+                          type="submit"
+                          className="text-xs font-medium text-zinc-700 underline dark:text-zinc-300"
+                        >
+                          + Add another day in this city
+                        </button>
+                      </form>
                     )}
-                    <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
-                      Map markers and gallery photos for this stop:{" "}
-                      <Link
-                        href={adminItineraryHref(itinerary.id, "markers")}
-                        className="font-medium text-zinc-900 underline dark:text-zinc-200"
-                      >
-                        Marker points
-                      </Link>
-                      .
-                    </p>
-                    <form action={deleteItineraryStopAction} className="mt-3">
-                      <input type="hidden" name="itineraryId" value={itinerary.id} />
-                      <input type="hidden" name="stopId" value={s.id} />
-                      <button
-                        type="submit"
-                        className="text-xs font-medium text-red-700 underline hover:text-red-800 dark:text-red-300 dark:hover:text-red-200"
-                      >
-                        Delete stop
-                      </button>
-                      <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-500">
-                        (removes all POIs and photos for this stop)
-                      </span>
-                    </form>
+
+                    <ul className="mt-3 flex flex-col gap-2">
+                      {city.stops.map((s) => (
+                        <li key={s.id} className="rounded border border-zinc-100 p-3 dark:border-zinc-800">
+                          <AdminStopDayDetailsPanel
+                            itineraryId={itinerary.id}
+                            stopId={s.id}
+                            dayIndexInCity={s.dayIndexInCity}
+                            placeName={s.placeName}
+                            stopAreaLabel={s.stopAreaLabel}
+                            notes={s.notes}
+                          />
+                          {itinerary.tripStartDate != null ? (
+                            <div className="mt-3 rounded border border-zinc-100 bg-zinc-50/80 p-3 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
+                              <span className="font-medium text-zinc-700 dark:text-zinc-300">Calendar date: </span>
+                              {s.calendarDate != null
+                                ? formatCalendarDateForPublic(s.calendarDate)
+                                : "—"}{" "}
+                              <span className="text-zinc-500">(from trip start in settings)</span>
+                            </div>
+                          ) : (
+                            <form
+                              action={updateItineraryStopCalendarDateAction}
+                              className="mt-3 flex flex-wrap items-end gap-2 rounded border border-zinc-100 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/40"
+                            >
+                              <input type="hidden" name="itineraryId" value={itinerary.id} />
+                              <input type="hidden" name="stopId" value={s.id} />
+                              <label className="flex flex-col gap-1">
+                                <span className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
+                                  Calendar date (optional)
+                                </span>
+                                <input
+                                  type="date"
+                                  name="calendarDate"
+                                  defaultValue={formatDateForDateInput(s.calendarDate)}
+                                  className="rounded border border-zinc-200 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50"
+                                />
+                              </label>
+                              <button
+                                type="submit"
+                                className="rounded bg-zinc-900 px-3 py-2 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                              >
+                                Save date
+                              </button>
+                            </form>
+                          )}
+                          <p className="mt-3 text-xs text-zinc-600 dark:text-zinc-400">
+                            POIs for this day:{" "}
+                            <Link
+                              href={adminItineraryHref(itinerary.id, "markers")}
+                              className="font-medium text-zinc-900 underline dark:text-zinc-200"
+                            >
+                              Marker points
+                            </Link>
+                            .
+                          </p>
+                          <form action={deleteItineraryStopAction} className="mt-3">
+                            <input type="hidden" name="itineraryId" value={itinerary.id} />
+                            <input type="hidden" name="stopId" value={s.id} />
+                            <button
+                              type="submit"
+                              className="text-xs font-medium text-red-700 underline hover:text-red-800 dark:text-red-300 dark:hover:text-red-200"
+                            >
+                              Delete this day
+                            </button>
+                            <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-500">
+                              (removes POIs and day trips for this day)
+                            </span>
+                          </form>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>

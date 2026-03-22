@@ -16,7 +16,8 @@ import { MAX_DAY_TRIP_PHOTOS } from "@/lib/poiPhotoLimits";
 
 type Stop = {
   id: string;
-  dayNumber: number;
+  cityName: string;
+  dayIndexInCity: number;
   orderIndex: number;
   placeName: string;
   lat: number | null;
@@ -58,27 +59,27 @@ export function AdminDayTripsPanel({
     <>
       <div className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Day trips</div>
       <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-500">
-        Each day trip belongs to a stop with coordinates. Use the <strong>route planner map</strong> on each stop to choose a
-        trip and <strong>click the map</strong> to add destinations in order (or add lat/lng manually below). Routes match the
-        public <strong>Day trips</strong> tab and use the same travel modes as the itinerary overview.
+        Each day trip starts from an itinerary <strong>day</strong> that has coordinates. Use the <strong>route planner map</strong>{" "}
+        under each day to choose a trip and <strong>click the map</strong> to add destinations in order (or use the form below).{" "}
+        Routes match the public <strong>Day trips</strong> tab and use the same travel modes as the itinerary overview.
       </p>
       <p className="mb-4 text-xs text-zinc-500 dark:text-zinc-500">
-        Stops need lat/lng — set them on the{" "}
-        <Link href={adminItineraryHref(itineraryId, "stops")} className="font-medium underline">
-          Stops
-        </Link>{" "}
-        tab first.
+        Days need lat/lng — set them on{" "}
+        <Link href={adminItineraryHref(itineraryId, "cities")} className="font-medium underline">
+          Cities &amp; days
+        </Link>
+        .
       </p>
 
       <ul className="flex flex-col gap-6">
         {stops.map((s) => (
           <li key={s.id} className="rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              Day {s.dayNumber} • Stop {s.orderIndex + 1}: {s.placeName}
+              {s.cityName} · Day {s.dayIndexInCity}: {s.placeName}
             </h3>
             {s.lat == null || s.lng == null ? (
               <p className="mt-2 text-sm text-amber-800 dark:text-amber-200/90">
-                Add coordinates for this stop before creating day trips.
+                Add coordinates for this day on Cities &amp; days before creating day trips.
               </p>
             ) : (
               <>
@@ -134,6 +135,29 @@ export function AdminDayTripsPanel({
                     Create day trip
                   </button>
                 </form>
+
+                <div className="mt-4">
+                  <AdminDayTripPlannerMap
+                    itineraryId={itineraryId}
+                    cityName={s.cityName}
+                    dayIndexInCity={s.dayIndexInCity}
+                    stopPlaceName={s.placeName}
+                    originLat={s.lat!}
+                    originLng={s.lng!}
+                    dayTrips={s.dayTrips.map((dt) => ({
+                      id: dt.id,
+                      title: dt.title,
+                      orderIndex: dt.orderIndex,
+                      destinations: dt.destinations.map((d) => ({
+                        id: d.id,
+                        orderIndex: d.orderIndex,
+                        placeName: d.placeName,
+                        lat: d.lat,
+                        lng: d.lng,
+                      })),
+                    }))}
+                  />
+                </div>
 
                 <ul className="mt-4 flex flex-col gap-4">
                   {s.dayTrips.map((dt, tIdx) => (

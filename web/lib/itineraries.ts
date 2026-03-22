@@ -1,5 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { getPrisma } from "@/lib/db";
+import { formatCalendarDateForPublic } from "@/lib/itineraryCalendarDate";
+import { addUtcCalendarDays } from "@/lib/syncTripCalendarDates";
 
 export type FeaturedItineraryListItem = {
   id: string;
@@ -7,7 +9,8 @@ export type FeaturedItineraryListItem = {
   slug: string;
   description: string | null;
   createdAt: Date;
-  stopsCount: number;
+  /** Number of itinerary days (one row per day in a city). */
+  daysCount: number;
   hasTravelTips: boolean;
   hasBudget: boolean;
 };
@@ -69,7 +72,7 @@ export async function getFeaturedItineraries(): Promise<FeaturedItineraryListIte
     slug: r.slug,
     description: r.description,
     createdAt: r.createdAt,
-    stopsCount: r.stops.length,
+    daysCount: r.stops.length,
     hasTravelTips: hasTips.has(r.id),
     hasBudget: hasBudget.has(r.id),
   }));
@@ -153,13 +156,16 @@ export type PublicItineraryDetail = {
   createdAt: Date;
   stops: Array<{
     id: string;
-    dayNumber: number;
+    cityId: string;
+    cityName: string;
+    dayIndexInCity: number;
     orderIndex: number;
     placeName: string;
-    city: string | null;
+    stopAreaLabel: string | null;
     notes: string | null;
     lat: number | null;
     lng: number | null;
+    calendarDate: Date | null;
     pois: Array<{
       id: string;
       title: string;
@@ -203,7 +209,32 @@ export type PublicItineraryDetail = {
   budgetCurrency: string;
   travelTips: Array<{ id: string; title: string; body: string; orderIndex: number }>;
   budgetLines: Array<{ id: string; category: string; amount: string; note: string | null; orderIndex: number }>;
+  /** Shown on the public page when trip start or any stop has a calendar date. */
+  tripDateRangeLabel: string | null;
 };
+
+function computePublicTripDateRangeLabel(
+  tripStartDate: Date | null,
+  stops: Array<{ calendarDate: Date | null }>,
+): string | null {
+  const n = stops.length;
+  if (n === 0) return null;
+  if (tripStartDate) {
+    const end = addUtcCalendarDays(tripStartDate, n - 1);
+    const a = formatCalendarDateForPublic(tripStartDate);
+    const b = formatCalendarDateForPublic(end);
+    return a === b ? a : `${a} – ${b}`;
+  }
+  const dates = stops.map((s) => s.calendarDate).filter((d): d is Date => d != null);
+  if (dates.length === 0) return null;
+  const tMin = Math.min(...dates.map((d) => d.getTime()));
+  const tMax = Math.max(...dates.map((d) => d.getTime()));
+  const min = new Date(tMin);
+  const max = new Date(tMax);
+  const a = formatCalendarDateForPublic(min);
+  const b = formatCalendarDateForPublic(max);
+  return a === b ? a : `${a} – ${b}`;
+}
 
 export async function getPublicItineraryBySlug(slug: string): Promise<PublicItineraryDetail | null> {
   const prisma = getPrisma();
@@ -216,17 +247,20 @@ export async function getPublicItineraryBySlug(slug: string): Promise<PublicItin
       description: true,
       createdAt: true,
       isPublic: true,
+      tripStartDate: true,
       stops: {
-        orderBy: [{ dayNumber: "asc" }, { orderIndex: "asc" }],
+        orderBy: [{ city: { sortOrder: "asc" } }, { dayIndexInCity: "asc" }],
         select: {
           id: true,
-          dayNumber: true,
+          dayIndexInCity: true,
           orderIndex: true,
           placeName: true,
-          city: true,
+          stopAreaLabel: true,
           notes: true,
           lat: true,
           lng: true,
+          calendarDate: true,
+          city: { select: { id: true, name: true } },
           pois: {
             orderBy: { createdAt: "asc" },
             select: {
@@ -290,6 +324,15 @@ export async function getPublicItineraryBySlug(slug: string): Promise<PublicItin
 
   const { budgetCurrency, travelTips, budgetLines } = await loadItineraryTipsBudgetAndCurrency(itinerary.id);
 
+  const stops = itinerary.stops.map((s) => {
+    const { city, ...rest } = s;
+    return {
+      ...rest,
+      cityId: city.id,
+      cityName: city.name,
+    };
+  });
+
   return {
     id: itinerary.id,
     title: itinerary.title,
@@ -299,6 +342,7 @@ export async function getPublicItineraryBySlug(slug: string): Promise<PublicItin
     budgetCurrency,
     travelTips,
     budgetLines,
-    stops: itinerary.stops,
+    stops,
+    tripDateRangeLabel: computePublicTripDateRangeLabel(itinerary.tripStartDate, stops),
   };
 }

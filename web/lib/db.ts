@@ -16,11 +16,13 @@ function prismaClientMatchesGeneratedSchema(p: PrismaClient): boolean {
     itineraryBudgetLine?: unknown;
     itineraryTravelTip?: unknown;
     dayTrip?: unknown;
+    itineraryCity?: unknown;
   };
   return (
     anyP.itineraryBudgetLine != null &&
     anyP.itineraryTravelTip != null &&
-    anyP.dayTrip != null
+    anyP.dayTrip != null &&
+    anyP.itineraryCity != null
   );
 }
 

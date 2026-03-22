@@ -8,7 +8,12 @@ import { isBudgetCurrency } from "@/lib/budgetCurrencies";
 import { allocateUniqueItinerarySlug } from "@/lib/itinerarySlug";
 import { getPrisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { parseItineraryCalendarDateInput } from "@/lib/itineraryCalendarDate";
 import { MAX_DAY_TRIP_PHOTOS, MAX_POI_PHOTOS_PER_POI } from "@/lib/poiPhotoLimits";
+import {
+  clearAllStopCalendarDates,
+  syncStopCalendarDatesFromTripStart,
+} from "@/lib/syncTripCalendarDates";
 
 function parseMoneyAmount(raw: string): number | null {
   const s = raw.trim().replace(/,/g, "");
@@ -18,68 +23,190 @@ function parseMoneyAmount(raw: string): number | null {
   return Math.round(n * 100) / 100;
 }
 
-export async function createItineraryStopAction(formData: FormData) {
+export async function createItineraryAction(formData: FormData) {
+  const session = await requireAdmin();
+  const authorId = session.user.id;
+  if (!authorId) {
+    redirect("/admin?newItineraryError=no-user");
+  }
+
+  const rawTitle = formData.get("title");
+  const title = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  if (!title) {
+    redirect("/admin?newItineraryError=missing-title");
+  }
+
+  const rawDescription = formData.get("description");
+  const description =
+    typeof rawDescription === "string" ? rawDescription.trim() : "";
+  const descriptionValue = description.length > 0 ? description : null;
+
+  const tripRaw = formData.get("tripStartDate");
+  const tripParsed = parseItineraryCalendarDateInput(typeof tripRaw === "string" ? tripRaw : "");
+  if (tripParsed === "invalid") {
+    redirect("/admin?newItineraryError=bad-trip-start-date");
+  }
+
+  const prisma = getPrisma();
+  const slug = await allocateUniqueItinerarySlug(title, "", async (candidate) => {
+    const row = await prisma.itinerary.findUnique({
+      where: { slug: candidate },
+      select: { id: true },
+    });
+    return row != null;
+  });
+  if (!slug) {
+    redirect("/admin?newItineraryError=title-needs-link");
+  }
+
+  let newId: string;
+  try {
+    const created = await prisma.itinerary.create({
+      data: {
+        title,
+        slug,
+        description: descriptionValue,
+        authorId,
+        isFeatured: false,
+        isPublic: true,
+        tripStartDate: tripParsed === "empty" ? null : tripParsed,
+      },
+      select: { id: true },
+    });
+    newId = created.id;
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      redirect("/admin?newItineraryError=slug-taken");
+    }
+    throw e;
+  }
+
+  await syncStopCalendarDatesFromTripStart(prisma, newId);
+
+  revalidatePath("/admin");
+  redirect(`/admin/itineraries/${encodeURIComponent(newId)}`);
+}
+
+export async function deleteItineraryAction(formData: FormData) {
+  await requireAdmin();
+  const id = formData.get("itineraryId");
+  if (!id || typeof id !== "string") {
+    redirect("/admin?deleteItineraryError=missing");
+  }
+
+  const prisma = getPrisma();
+  const existing = await prisma.itinerary.findUnique({
+    where: { id },
+    select: { id: true, slug: true, title: true },
+  });
+  if (!existing) {
+    redirect("/admin?deleteItineraryError=not-found");
+  }
+
+  await prisma.itinerary.delete({ where: { id } });
+
+  revalidatePath("/admin");
+  revalidatePath("/featured");
+  revalidatePath(`/itineraries/${existing.slug}`);
+
+  const titleParam = encodeURIComponent(existing.title);
+  redirect(`/admin?itineraryDeleted=1&deletedTitle=${titleParam}`);
+}
+
+export async function createItineraryCityWithDaysAction(formData: FormData) {
   await requireAdmin();
   const itineraryId = formData.get("itineraryId");
   if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
 
-  const rawDay = formData.get("dayNumber");
-  const rawPlace = formData.get("placeName");
-  const rawCity = formData.get("city");
-  const rawNotes = formData.get("notes");
-  const rawLat = formData.get("lat");
-  const rawLng = formData.get("lng");
+  const rawName = formData.get("cityName");
+  const name = typeof rawName === "string" ? rawName.trim() : "";
+  const modeRaw = formData.get("cityCreationMode");
+  const legacy = modeRaw === "legacy";
+  const daysRaw = formData.get("daysCount");
+  const daysCount = typeof daysRaw === "string" ? Number.parseInt(daysRaw, 10) : NaN;
 
-  const dayNumber = typeof rawDay === "string" ? Number.parseInt(rawDay, 10) : NaN;
-  const placeName = typeof rawPlace === "string" ? rawPlace.trim() : "";
-  const city = typeof rawCity === "string" ? rawCity.trim() : "";
-  const notes = typeof rawNotes === "string" ? rawNotes.trim() : "";
-  const lat = typeof rawLat === "string" ? Number(rawLat) : NaN;
-  const lng = typeof rawLng === "string" ? Number(rawLng) : NaN;
-
-  if (!placeName) {
-    redirect(adminItineraryHref(itineraryId, "stops", { stopError: "missing-place" }));
-  }
-  if (!Number.isFinite(dayNumber) || dayNumber < 1) {
-    redirect(adminItineraryHref(itineraryId, "stops", { stopError: "bad-day" }));
-  }
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    redirect(adminItineraryHref(itineraryId, "stops", { stopError: "bad-coordinates" }));
+  if (!name) {
+    redirect(adminItineraryHref(itineraryId, "cities", { cityError: "missing-name" }));
   }
 
   const prisma = getPrisma();
   const itinerary = await prisma.itinerary.findUnique({ where: { id: itineraryId }, select: { id: true } });
   if (!itinerary) redirect("/admin");
 
-  const maxIx = await prisma.itineraryStop.aggregate({
-    where: { itineraryId, dayNumber },
-    _max: { orderIndex: true },
+  const maxSort = await prisma.itineraryCity.aggregate({
+    where: { itineraryId },
+    _max: { sortOrder: true },
   });
-  const orderIndex = (maxIx._max.orderIndex ?? -1) + 1;
+  const sortOrder = (maxSort._max.sortOrder ?? -1) + 1;
 
-  await prisma.itineraryStop.create({
-    data: {
-      itineraryId,
-      dayNumber,
-      orderIndex,
-      placeName,
-      city: city || null,
-      lat,
-      lng,
-      notes: notes || null,
-    },
-  });
+  if (legacy) {
+    if (!Number.isFinite(daysCount) || daysCount < 1 || daysCount > 42) {
+      redirect(adminItineraryHref(itineraryId, "cities", { cityError: "bad-days" }));
+    }
+    await prisma.$transaction(async (tx) => {
+      const city = await tx.itineraryCity.create({
+        data: { itineraryId, name, sortOrder, kind: "LEGACY_MULTI_DAY" },
+      });
+      for (let i = 1; i <= daysCount; i++) {
+        await tx.itineraryStop.create({
+          data: {
+            itineraryId,
+            cityId: city.id,
+            dayIndexInCity: i,
+            orderIndex: 0,
+            placeName: `${name} — Day ${i}`,
+          },
+        });
+      }
+    });
+  } else {
+    await prisma.$transaction(async (tx) => {
+      const city = await tx.itineraryCity.create({
+        data: { itineraryId, name, sortOrder, kind: "SINGLE_STOP" },
+      });
+      await tx.itineraryStop.create({
+        data: {
+          itineraryId,
+          cityId: city.id,
+          dayIndexInCity: 1,
+          orderIndex: 0,
+          placeName: name,
+        },
+      });
+    });
+  }
 
-  redirect(adminItineraryHref(itineraryId, "stops", { stopSaved: "1" }));
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+
+  redirect(adminItineraryHref(itineraryId, "cities", { citySaved: "1" }));
 }
 
-export async function deleteItineraryStopAction(formData: FormData) {
+export async function updateItineraryStopLocationAction(formData: FormData) {
   await requireAdmin();
   const itineraryId = formData.get("itineraryId");
   const stopId = formData.get("stopId");
   if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
   if (!stopId || typeof stopId !== "string") {
-    redirect(adminItineraryHref(itineraryId, "stops"));
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const rawPlace = formData.get("placeName");
+  const rawArea = formData.get("stopAreaLabel");
+  const rawNotes = formData.get("notes");
+  const rawLat = formData.get("lat");
+  const rawLng = formData.get("lng");
+
+  const placeName = typeof rawPlace === "string" ? rawPlace.trim() : "";
+  const stopAreaLabel = typeof rawArea === "string" ? rawArea.trim() : "";
+  const notes = typeof rawNotes === "string" ? rawNotes.trim() : "";
+  const lat = typeof rawLat === "string" ? Number(rawLat) : NaN;
+  const lng = typeof rawLng === "string" ? Number(rawLng) : NaN;
+
+  if (!placeName) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "missing-place" }));
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-coordinates" }));
   }
 
   const prisma = getPrisma();
@@ -88,11 +215,295 @@ export async function deleteItineraryStopAction(formData: FormData) {
     select: { itineraryId: true },
   });
   if (!stop || stop.itineraryId !== itineraryId) {
-    redirect(adminItineraryHref(itineraryId, "stops"));
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-stop" }));
+  }
+
+  await prisma.itineraryStop.update({
+    where: { id: stopId },
+    data: {
+      placeName,
+      stopAreaLabel: stopAreaLabel.length > 0 ? stopAreaLabel : null,
+      lat,
+      lng,
+      notes: notes.length > 0 ? notes : null,
+    },
+  });
+
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+
+  redirect(adminItineraryHref(itineraryId, "cities", { stopSaved: "1" }));
+}
+
+/** Update place name, area label, and notes without changing map coordinates. */
+export async function updateItineraryStopDetailsAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const stopId = formData.get("stopId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!stopId || typeof stopId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const rawPlace = formData.get("placeName");
+  const rawArea = formData.get("stopAreaLabel");
+  const rawNotes = formData.get("notes");
+
+  const placeName = typeof rawPlace === "string" ? rawPlace.trim() : "";
+  const stopAreaLabel = typeof rawArea === "string" ? rawArea.trim() : "";
+  const notes = typeof rawNotes === "string" ? rawNotes.trim() : "";
+
+  if (!placeName) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "missing-place" }));
+  }
+
+  const prisma = getPrisma();
+  const stop = await prisma.itineraryStop.findUnique({
+    where: { id: stopId },
+    select: { itineraryId: true },
+  });
+  if (!stop || stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-stop" }));
+  }
+
+  await prisma.itineraryStop.update({
+    where: { id: stopId },
+    data: {
+      placeName,
+      stopAreaLabel: stopAreaLabel.length > 0 ? stopAreaLabel : null,
+      notes: notes.length > 0 ? notes : null,
+    },
+  });
+
+  redirect(adminItineraryHref(itineraryId, "cities", { stopDetailsSaved: "1" }));
+}
+
+/** Same location / place fields applied to every selected stop (legacy multi-day cities). */
+export async function updateItineraryStopsLocationBulkAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+
+  const rawIds = formData.getAll("stopIds");
+  const stopIds = [
+    ...new Set(
+      rawIds.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()),
+    ),
+  ];
+
+  if (stopIds.length === 0) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bulk-no-days" }));
+  }
+
+  const rawPlace = formData.get("placeName");
+  const rawArea = formData.get("stopAreaLabel");
+  const rawNotes = formData.get("notes");
+  const rawLat = formData.get("lat");
+  const rawLng = formData.get("lng");
+
+  const placeName = typeof rawPlace === "string" ? rawPlace.trim() : "";
+  const stopAreaLabel = typeof rawArea === "string" ? rawArea.trim() : "";
+  const notes = typeof rawNotes === "string" ? rawNotes.trim() : "";
+  const lat = typeof rawLat === "string" ? Number.parseFloat(rawLat) : NaN;
+  const lng = typeof rawLng === "string" ? Number.parseFloat(rawLng) : NaN;
+
+  if (!placeName) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "missing-place" }));
+  }
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-coordinates" }));
+  }
+
+  const prisma = getPrisma();
+  const found = await prisma.itineraryStop.findMany({
+    where: { id: { in: stopIds }, itineraryId },
+    select: { id: true },
+  });
+  if (found.length !== stopIds.length) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-stop" }));
+  }
+
+  const data = {
+    placeName,
+    stopAreaLabel: stopAreaLabel.length > 0 ? stopAreaLabel : null,
+    lat,
+    lng,
+    notes: notes.length > 0 ? notes : null,
+  };
+
+  await prisma.$transaction(stopIds.map((id) => prisma.itineraryStop.update({ where: { id }, data })));
+
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+
+  redirect(adminItineraryHref(itineraryId, "cities", { stopSaved: "1" }));
+}
+
+export async function updateItineraryStopCalendarDateAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const stopId = formData.get("stopId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!stopId || typeof stopId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const raw = formData.get("calendarDate");
+  const parsed = parseItineraryCalendarDateInput(typeof raw === "string" ? raw : "");
+  if (parsed === "invalid") {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-calendar-date" }));
+  }
+
+  const prisma = getPrisma();
+  const stop = await prisma.itineraryStop.findUnique({
+    where: { id: stopId },
+    select: {
+      itineraryId: true,
+      itinerary: { select: { tripStartDate: true } },
+    },
+  });
+  if (!stop || stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "bad-stop" }));
+  }
+  if (stop.itinerary.tripStartDate != null) {
+    redirect(adminItineraryHref(itineraryId, "cities", { stopError: "trip-start-locks-dates" }));
+  }
+
+  await prisma.itineraryStop.update({
+    where: { id: stopId },
+    data: { calendarDate: parsed === "empty" ? null : parsed },
+  });
+
+  redirect(adminItineraryHref(itineraryId, "cities", { stopCalendarSaved: "1" }));
+}
+
+export async function deleteItineraryCityAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const cityId = formData.get("cityId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!cityId || typeof cityId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const prisma = getPrisma();
+  const city = await prisma.itineraryCity.findUnique({
+    where: { id: cityId },
+    select: { itineraryId: true },
+  });
+  if (!city || city.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  await prisma.itineraryCity.delete({ where: { id: cityId } });
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+  redirect(adminItineraryHref(itineraryId, "cities", { cityDeleted: "1" }));
+}
+
+export async function addDayToCityAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const cityId = formData.get("cityId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!cityId || typeof cityId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const prisma = getPrisma();
+  const city = await prisma.itineraryCity.findUnique({
+    where: { id: cityId },
+    select: { itineraryId: true, name: true, kind: true },
+  });
+  if (!city || city.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+  if (city.kind === "SINGLE_STOP") {
+    redirect(adminItineraryHref(itineraryId, "cities", { cityError: "single-stop-no-extra-days" }));
+  }
+
+  const maxIx = await prisma.itineraryStop.aggregate({
+    where: { cityId },
+    _max: { dayIndexInCity: true },
+  });
+  const nextDay = (maxIx._max.dayIndexInCity ?? 0) + 1;
+
+  await prisma.itineraryStop.create({
+    data: {
+      itineraryId,
+      cityId,
+      dayIndexInCity: nextDay,
+      orderIndex: 0,
+      placeName: `${city.name} — Day ${nextDay}`,
+    },
+  });
+
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+  redirect(adminItineraryHref(itineraryId, "cities", { dayAdded: "1" }));
+}
+
+export async function deleteItineraryStopAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const stopId = formData.get("stopId");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!stopId || typeof stopId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const prisma = getPrisma();
+  const stop = await prisma.itineraryStop.findUnique({
+    where: { id: stopId },
+    select: { itineraryId: true, cityId: true },
+  });
+  if (!stop || stop.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  const city = await prisma.itineraryCity.findUnique({
+    where: { id: stop.cityId },
+    select: { kind: true },
+  });
+  if (city?.kind === "SINGLE_STOP") {
+    const n = await prisma.itineraryStop.count({ where: { cityId: stop.cityId } });
+    if (n <= 1) {
+      redirect(adminItineraryHref(itineraryId, "cities", { stopError: "cannot-delete-only-stop" }));
+    }
   }
 
   await prisma.itineraryStop.delete({ where: { id: stopId } });
-  redirect(adminItineraryHref(itineraryId, "stops", { stopDeleted: "1" }));
+  await syncStopCalendarDatesFromTripStart(prisma, itineraryId);
+  redirect(adminItineraryHref(itineraryId, "cities", { stopDeleted: "1" }));
+}
+
+export async function setItineraryCityKindAction(formData: FormData) {
+  await requireAdmin();
+  const itineraryId = formData.get("itineraryId");
+  const cityId = formData.get("cityId");
+  const kindRaw = formData.get("kind");
+  if (!itineraryId || typeof itineraryId !== "string") redirect("/admin");
+  if (!cityId || typeof cityId !== "string") {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+  if (kindRaw !== "SINGLE_STOP" && kindRaw !== "LEGACY_MULTI_DAY") {
+    redirect(adminItineraryHref(itineraryId, "cities", { cityError: "bad-city-kind" }));
+  }
+
+  const prisma = getPrisma();
+  const city = await prisma.itineraryCity.findUnique({
+    where: { id: cityId },
+    select: { itineraryId: true, _count: { select: { stops: true } } },
+  });
+  if (!city || city.itineraryId !== itineraryId) {
+    redirect(adminItineraryHref(itineraryId, "cities"));
+  }
+
+  if (kindRaw === "SINGLE_STOP" && city._count.stops > 1) {
+    redirect(adminItineraryHref(itineraryId, "cities", { cityError: "kind-needs-one-stop" }));
+  }
+
+  await prisma.itineraryCity.update({
+    where: { id: cityId },
+    data: { kind: kindRaw },
+  });
+  redirect(adminItineraryHref(itineraryId, "cities", { cityKindUpdated: "1" }));
 }
 
 export async function updateItineraryVisibilityAction(formData: FormData) {
@@ -103,7 +514,7 @@ export async function updateItineraryVisibilityAction(formData: FormData) {
   const rawTitle = formData.get("title");
   const title = typeof rawTitle === "string" ? rawTitle.trim() : "";
   if (!title) {
-    redirect(adminItineraryHref(id, "stops", { itineraryError: "missing-title" }));
+    redirect(adminItineraryHref(id, "cities", { itineraryError: "missing-title" }));
   }
 
   const rawDescription = formData.get("description");
@@ -114,10 +525,16 @@ export async function updateItineraryVisibilityAction(formData: FormData) {
   const isFeatured = formData.get("isFeatured") === "on";
   const isPublic = formData.get("isPublic") === "on";
 
+  const tripRaw = formData.get("tripStartDate");
+  const tripParsed = parseItineraryCalendarDateInput(typeof tripRaw === "string" ? tripRaw : "");
+  if (tripParsed === "invalid") {
+    redirect(adminItineraryHref(id, "cities", { itineraryError: "bad-trip-start-date" }));
+  }
+
   const prisma = getPrisma();
   const existing = await prisma.itinerary.findUnique({
     where: { id },
-    select: { slug: true },
+    select: { slug: true, tripStartDate: true },
   });
   if (!existing) redirect("/admin");
 
@@ -129,22 +546,37 @@ export async function updateItineraryVisibilityAction(formData: FormData) {
     return row != null;
   });
   if (!slug) {
-    redirect(adminItineraryHref(id, "stops", { itineraryError: "title-needs-link" }));
+    redirect(adminItineraryHref(id, "cities", { itineraryError: "title-needs-link" }));
   }
 
   try {
     await prisma.itinerary.update({
       where: { id },
-      data: { title, slug, description: descriptionValue, isFeatured, isPublic },
+      data: {
+        title,
+        slug,
+        description: descriptionValue,
+        isFeatured,
+        isPublic,
+        tripStartDate: tripParsed === "empty" ? null : tripParsed,
+      },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-      redirect(adminItineraryHref(id, "stops", { itineraryError: "slug-taken" }));
+      redirect(adminItineraryHref(id, "cities", { itineraryError: "slug-taken" }));
     }
     throw e;
   }
 
-  redirect(adminItineraryHref(id, "stops", { saved: "1" }));
+  if (tripParsed === "empty") {
+    if (existing.tripStartDate != null) {
+      await clearAllStopCalendarDates(prisma, id);
+    }
+  } else {
+    await syncStopCalendarDatesFromTripStart(prisma, id);
+  }
+
+  redirect(adminItineraryHref(id, "cities", { saved: "1" }));
 }
 
 export async function createMarkerTypeAction(formData: FormData) {

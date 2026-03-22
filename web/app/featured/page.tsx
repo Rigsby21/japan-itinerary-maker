@@ -53,7 +53,7 @@ export default async function FeaturedPage() {
                   </p>
                 )}
                 <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-500">
-                  Stops: {it.stopsCount} • Created: {new Date(it.createdAt).toLocaleDateString()}
+                  Days: {it.daysCount} • Created: {new Date(it.createdAt).toLocaleDateString()}
                 </p>
               </li>
             ))}

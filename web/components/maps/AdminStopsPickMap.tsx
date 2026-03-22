@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
-import { createItineraryStopAction } from "@/lib/actions/adminItinerary";
+import {
+  updateItineraryStopLocationAction,
+  updateItineraryStopsLocationBulkAction,
+} from "@/lib/actions/adminItinerary";
+import { clusterStopsByMapPosition } from "@/lib/clusterStopsByMapPosition";
 import { englishOrdinal } from "@/lib/englishOrdinal";
 
 export type AdminStopsPickMapStop = {
@@ -10,12 +14,17 @@ export type AdminStopsPickMapStop = {
   lat: number | null;
   lng: number | null;
   placeName: string;
-  dayNumber: number;
+  cityName: string;
+  dayIndexInCity: number;
 };
 
 type Props = {
   itineraryId: string;
   stops: AdminStopsPickMapStop[];
+  /** SINGLE_STOP cities use “stop” copy; legacy multi-day uses “day”. */
+  pickerLabels?: "day" | "stop";
+  /** Legacy multi-day only: pick several days that share the same map pin and place fields. */
+  allowBulkDayTargets?: boolean;
 };
 
 let mapsLoaderOptionsApplied = false;
@@ -29,7 +38,12 @@ function ensureMapsLoaderOptions(apiKey: string) {
 
 const DEFAULT_CENTER = { lat: 35.6762, lng: 139.6503 };
 
-export function AdminStopsPickMap({ itineraryId, stops }: Props) {
+export function AdminStopsPickMap({
+  itineraryId,
+  stops,
+  pickerLabels = "day",
+  allowBulkDayTargets = false,
+}: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInst = useRef<google.maps.Map | null>(null);
   const stopMarkersRef = useRef<google.maps.Marker[]>([]);
@@ -40,6 +54,15 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
   const [pickLng, setPickLng] = useState<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [loadError, setLoadError] = useState<"failed" | null>(null);
+  const [stopId, setStopId] = useState<string>("");
+
+  const useBulkUi = allowBulkDayTargets && stops.length > 1;
+  const stopIdsKey = useMemo(() => stops.map((s) => s.id).join(","), [stops]);
+  const [bulkTargetIds, setBulkTargetIds] = useState<Set<string>>(() => new Set(stops.map((s) => s.id)));
+
+  useEffect(() => {
+    setBulkTargetIds(new Set(stops.map((s) => s.id)));
+  }, [stopIdsKey]);
 
   const pins = useMemo(
     () =>
@@ -55,10 +78,21 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
 
   const stopsKey = useMemo(() => pins.map((p) => `${p.id}:${p.lat}:${p.lng}`).join("|"), [pins]);
 
-  const suggestedDay = useMemo(() => {
-    if (stops.length === 0) return 1;
-    return Math.max(...stops.map((s) => s.dayNumber));
-  }, [stops]);
+  const sortedStops = useMemo(
+    () => [...stops].sort((a, b) => a.dayIndexInCity - b.dayIndexInCity),
+    [stops],
+  );
+
+  const stopsMetaKey = useMemo(
+    () => stops.map((s) => `${s.id}:${s.dayIndexInCity}:${s.placeName}:${s.lat}:${s.lng}`).join("|"),
+    [stops],
+  );
+
+  useEffect(() => {
+    if (stops.length > 0 && !stops.some((s) => s.id === stopId)) {
+      setStopId(stops[0].id);
+    }
+  }, [stops, stopId]);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -85,22 +119,31 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
         mapInst.current = map;
 
         const bounds = new google.maps.LatLngBounds();
-        for (let i = 0; i < stops.length; i++) {
-          const p = stops[i];
-          if (
-            p.lat == null ||
-            p.lng == null ||
-            !Number.isFinite(p.lat) ||
-            !Number.isFinite(p.lng)
-          ) {
-            continue;
+        const clusters = clusterStopsByMapPosition(stops);
+
+        clusters.forEach((cluster, ci) => {
+          const ord = englishOrdinal(ci + 1);
+          const { lat, lng } = cluster;
+          bounds.extend({ lat, lng });
+          const first = cluster.stops[0];
+          const cityName = first.cityName;
+          let dayOrStop: string;
+          if (pickerLabels === "stop") {
+            dayOrStop =
+              cluster.stops.length > 1
+                ? `${ord} — ${cityName} · ${cluster.stops.length} stops (same place)`
+                : `${ord} — ${cityName} · Stop: ${first.placeName}`;
+          } else if (cluster.stops.length > 1) {
+            const days = cluster.stops.map((s) => s.dayIndexInCity).join(", ");
+            dayOrStop = `${ord} — ${cityName} · Days ${days} (same place) — ${first.placeName}`;
+          } else {
+            dayOrStop = `${ord} — ${cityName} · Day ${first.dayIndexInCity}: ${first.placeName}`;
           }
-          bounds.extend({ lat: p.lat, lng: p.lng });
-          const ord = englishOrdinal(i + 1);
+
           const m = new google.maps.Marker({
-            position: { lat: p.lat, lng: p.lng },
+            position: { lat, lng },
             map,
-            title: `${ord} stop — ${p.placeName} (day ${p.dayNumber})`,
+            title: dayOrStop,
             label: {
               text: ord,
               color: "#ffffff",
@@ -117,13 +160,13 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
             },
           });
           stopMarkersRef.current.push(m);
-        }
+        });
 
-        if (pins.length === 0) {
+        if (clusters.length === 0) {
           map.setCenter(DEFAULT_CENTER);
           map.setZoom(10);
-        } else if (pins.length === 1) {
-          map.setCenter({ lat: pins[0].lat, lng: pins[0].lng });
+        } else if (clusters.length === 1) {
+          map.setCenter({ lat: clusters[0].lat, lng: clusters[0].lng });
           map.setZoom(12);
         } else {
           map.fitBounds(bounds, 48);
@@ -152,7 +195,7 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
       mapInst.current = null;
       setMapReady(false);
     };
-  }, [apiKey, stopsKey]);
+  }, [apiKey, stopsKey, stopsMetaKey, pickerLabels]);
 
   useEffect(() => {
     if (!mapReady || !mapInst.current) return;
@@ -169,7 +212,7 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
       position: { lat: pickLat, lng: pickLng },
       map,
       draggable: true,
-      title: "New stop — drag to adjust",
+      title: "New location — drag to adjust",
       zIndex: 1000,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
@@ -219,24 +262,130 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
     );
   }
 
+  if (stops.length === 0) {
+    return (
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        Add a city first — then you can place {pickerLabels === "stop" ? "its stop" : "each day"} on the map.
+      </p>
+    );
+  }
+
   return (
-    <form action={createItineraryStopAction} className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+    <form
+      action={useBulkUi ? updateItineraryStopsLocationBulkAction : updateItineraryStopLocationAction}
+      className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
+    >
       <input type="hidden" name="itineraryId" value={itineraryId} />
+      {!useBulkUi && <input type="hidden" name="stopId" value={stopId} />}
+      {useBulkUi &&
+        Array.from(bulkTargetIds).map((id) => <input key={id} type="hidden" name="stopIds" value={id} />)}
       <input type="hidden" name="lat" value={pickLat ?? ""} />
       <input type="hidden" name="lng" value={pickLng ?? ""} />
 
       <div>
-        <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Add stop</div>
+        <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          {pickerLabels === "stop" ? "Set location for this city’s stop" : "Set location for day(s)"}
+        </div>
         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
-          Click the map to place the stop (blue pins are existing stops). Drag the orange pin to fine-tune. Then fill in the
-          details and save.
+          {pickerLabels === "stop" ? (
+            <>
+              Choose the stop if there is more than one row, click the map (navy pins already have coordinates), drag the
+              orange pin to fine-tune, then save. Use day trips and marker POIs for extra places.
+            </>
+          ) : useBulkUi ? (
+            <>
+              Click the map to place the pin (navy markers show days that already have coordinates). Choose which days get
+              this <strong>same</strong> location and place details — all checked days update together. Uncheck any day
+              that should stay unchanged.
+            </>
+          ) : (
+            <>
+              Choose which day you are editing, click the map (navy pins are days that already have coordinates), drag the
+              orange pin to fine-tune, then save.
+            </>
+          )}
         </p>
       </div>
+
+      {useBulkUi ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Apply to days</span>
+            <div className="flex gap-2 text-xs">
+              <button
+                type="button"
+                className="font-medium text-zinc-700 underline dark:text-zinc-300"
+                onClick={() => setBulkTargetIds(new Set(stops.map((s) => s.id)))}
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                className="font-medium text-zinc-700 underline dark:text-zinc-300"
+                onClick={() => setBulkTargetIds(new Set())}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <ul className="flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded border border-zinc-200 p-2 dark:border-zinc-800">
+            {sortedStops.map((s) => (
+              <li key={s.id}>
+                <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-800 dark:text-zinc-200">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={bulkTargetIds.has(s.id)}
+                    onChange={(e) => {
+                      setBulkTargetIds((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(s.id);
+                        else next.delete(s.id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <span>
+                    Day {s.dayIndexInCity}
+                    <span className="text-zinc-500 dark:text-zinc-500"> — {s.placeName}</span>
+                    {s.lat != null && s.lng != null ? null : (
+                      <span className="text-amber-700 dark:text-amber-300"> (no pin yet)</span>
+                    )}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          {bulkTargetIds.size === 0 && (
+            <p className="text-xs text-amber-800 dark:text-amber-200/90">Select at least one day to save.</p>
+          )}
+        </div>
+      ) : (
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            {pickerLabels === "stop" ? "Which stop?" : "Which day?"}
+          </span>
+          <select
+            required
+            value={stopId}
+            onChange={(e) => setStopId(e.target.value)}
+            className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
+          >
+            {stops.map((s) => (
+              <option key={s.id} value={s.id}>
+                {pickerLabels === "stop"
+                  ? `${s.cityName} · ${s.placeName}${s.lat != null && s.lng != null ? "" : " (no pin yet)"}`
+                  : `${s.cityName} · Day ${s.dayIndexInCity}${s.lat != null && s.lng != null ? ` — ${s.placeName}` : ` — ${s.placeName} (no pin yet)`}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <div
         ref={mapRef}
         className="h-80 w-full rounded-md border border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800"
-        aria-label="Pick stop location on map"
+        aria-label={pickerLabels === "stop" ? "Pick stop location on map" : "Pick day location on map"}
       />
 
       {hasPick ? (
@@ -244,21 +393,12 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
           Selected: {pickLat!.toFixed(6)}, {pickLng!.toFixed(6)}
         </p>
       ) : (
-        <p className="text-xs text-amber-800 dark:text-amber-200/90">Click the map to choose coordinates for this stop.</p>
+        <p className="text-xs text-amber-800 dark:text-amber-200/90">
+          Click the map to set coordinates for this {pickerLabels === "stop" ? "stop" : "day"}.
+        </p>
       )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Day number</span>
-          <input
-            name="dayNumber"
-            type="number"
-            min={1}
-            defaultValue={suggestedDay}
-            required
-            className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
-          />
-        </label>
         <label className="flex flex-col gap-1 sm:col-span-2">
           <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Place name</span>
           <input
@@ -270,11 +410,11 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
           />
         </label>
         <label className="flex flex-col gap-1 sm:col-span-2">
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">City (optional)</span>
+          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">Area / neighborhood (optional)</span>
           <input
-            name="city"
+            name="stopAreaLabel"
             type="text"
-            placeholder="e.g. Tokyo"
+            placeholder="e.g. Asakusa"
             className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
           />
         </label>
@@ -283,7 +423,7 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
           <textarea
             name="notes"
             rows={2}
-            placeholder="Short note for this stop…"
+            placeholder={pickerLabels === "stop" ? "Short note for this stop…" : "Short note for this day…"}
             className="rounded border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50"
           />
         </label>
@@ -292,10 +432,14 @@ export function AdminStopsPickMap({ itineraryId, stops }: Props) {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="submit"
-          disabled={!hasPick}
+          disabled={!hasPick || (useBulkUi && bulkTargetIds.size === 0)}
           className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
-          Save stop
+          {pickerLabels === "stop"
+            ? "Save stop location"
+            : useBulkUi
+              ? `Save to ${bulkTargetIds.size} day${bulkTargetIds.size === 1 ? "" : "s"}`
+              : "Save day location"}
         </button>
         {hasPick && (
           <button

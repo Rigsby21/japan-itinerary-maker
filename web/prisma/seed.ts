@@ -67,65 +67,81 @@ async function main() {
   });
 
   await prisma.markerType.deleteMany({ where: { itineraryId: itinerary.id } });
-  await prisma.itineraryStop.deleteMany({ where: { itineraryId: itinerary.id } });
+  await prisma.itineraryCity.deleteMany({ where: { itineraryId: itinerary.id } });
+
+  const tokyoCity = await prisma.itineraryCity.create({
+    data: {
+      itineraryId: itinerary.id,
+      name: "Tokyo",
+      sortOrder: 0,
+      kind: "LEGACY_MULTI_DAY",
+    },
+  });
+
   await prisma.itineraryStop.createMany({
     data: [
       {
         itineraryId: itinerary.id,
-        dayNumber: 1,
+        cityId: tokyoCity.id,
+        dayIndexInCity: 1,
         orderIndex: 0,
         placeName: "Senso-ji",
-        city: "Tokyo",
+        stopAreaLabel: "Asakusa",
         notes: "Start early; explore Asakusa and grab snacks on Nakamise-dori.",
         lat: 35.714765,
         lng: 139.796655,
       },
       {
         itineraryId: itinerary.id,
-        dayNumber: 1,
-        orderIndex: 1,
+        cityId: tokyoCity.id,
+        dayIndexInCity: 2,
+        orderIndex: 0,
         placeName: "Tokyo Skytree",
-        city: "Tokyo",
+        stopAreaLabel: "Sumida",
         notes: "Great sunset views if the weather is clear.",
         lat: 35.710063,
         lng: 139.8107,
       },
       {
         itineraryId: itinerary.id,
-        dayNumber: 2,
+        cityId: tokyoCity.id,
+        dayIndexInCity: 3,
         orderIndex: 0,
         placeName: "Meiji Jingu",
-        city: "Tokyo",
+        stopAreaLabel: "Shibuya",
         notes: "Quiet shrine walk; then head into Harajuku/Omotesando.",
         lat: 35.676397,
         lng: 139.699325,
       },
       {
         itineraryId: itinerary.id,
-        dayNumber: 2,
-        orderIndex: 1,
+        cityId: tokyoCity.id,
+        dayIndexInCity: 4,
+        orderIndex: 0,
         placeName: "Shibuya Crossing",
-        city: "Tokyo",
+        stopAreaLabel: "Shibuya",
         notes: "Iconic crossing; consider Shibuya Sky nearby for views.",
         lat: 35.659485,
         lng: 139.700556,
       },
       {
         itineraryId: itinerary.id,
-        dayNumber: 3,
+        cityId: tokyoCity.id,
+        dayIndexInCity: 5,
         orderIndex: 0,
         placeName: "Tsukiji Outer Market",
-        city: "Tokyo",
+        stopAreaLabel: "Chuo",
         notes: "Breakfast and street food; go early for the best selection.",
         lat: 35.665491,
         lng: 139.770833,
       },
       {
         itineraryId: itinerary.id,
-        dayNumber: 3,
-        orderIndex: 1,
+        cityId: tokyoCity.id,
+        dayIndexInCity: 6,
+        orderIndex: 0,
         placeName: "Ueno Park",
-        city: "Tokyo",
+        stopAreaLabel: "Taito",
         notes: "Museums and a relaxed walk; great flexible afternoon spot.",
         lat: 35.716667,
         lng: 139.773333,
@@ -135,7 +151,7 @@ async function main() {
 
   const stops = await prisma.itineraryStop.findMany({
     where: { itineraryId: itinerary.id },
-    orderBy: [{ dayNumber: "asc" }, { orderIndex: "asc" }],
+    orderBy: [{ cityId: "asc" }, { dayIndexInCity: "asc" }],
   });
   const sensoji = stops.find((s) => s.placeName === "Senso-ji");
   const skytree = stops.find((s) => s.placeName === "Tokyo Skytree");

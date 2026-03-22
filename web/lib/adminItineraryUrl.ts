@@ -1,4 +1,4 @@
-export type AdminItineraryTab = "stops" | "markers" | "budget" | "tips" | "day-trips";
+export type AdminItineraryTab = "cities" | "markers" | "budget" | "tips" | "day-trips";
 
 export function adminItineraryHref(
   itineraryId: string,
@@ -37,8 +37,15 @@ type TabQuery = {
   budgetLineDeleted?: string;
   budgetError?: string;
   stopSaved?: string;
+  stopDetailsSaved?: string;
+  stopCalendarSaved?: string;
   stopDeleted?: string;
   stopError?: string;
+  citySaved?: string;
+  cityDeleted?: string;
+  cityError?: string;
+  cityKindUpdated?: string;
+  dayAdded?: string;
   itineraryError?: string;
   dayTripSaved?: string;
   dayTripUpdated?: string;
@@ -57,9 +64,25 @@ type TabQuery = {
 /** URL `tab` wins; else infer from flash params so old links still open the right section. */
 export function resolveAdminItineraryTab(query: TabQuery): AdminItineraryTab {
   const t = query.tab;
-  if (t === "stops" || t === "markers" || t === "budget" || t === "tips" || t === "day-trips") return t;
+  if (t === "cities" || t === "markers" || t === "budget" || t === "tips" || t === "day-trips") return t;
+  // Legacy bookmark
+  if (t === "stops") return "cities";
 
-  if (query.stopSaved || query.stopDeleted || query.stopError || query.itineraryError) return "stops";
+  if (
+    query.stopSaved ||
+    query.stopDetailsSaved ||
+    query.stopCalendarSaved ||
+    query.stopDeleted ||
+    query.stopError ||
+    query.citySaved ||
+    query.cityDeleted ||
+    query.cityError ||
+    query.cityKindUpdated ||
+    query.dayAdded ||
+    query.itineraryError
+  ) {
+    return "cities";
+  }
 
   if (
     query.markerTypeSaved ||
@@ -100,5 +123,5 @@ export function resolveAdminItineraryTab(query: TabQuery): AdminItineraryTab {
   ) {
     return "day-trips";
   }
-  return "stops";
+  return "cities";
 }

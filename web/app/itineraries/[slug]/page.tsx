@@ -8,6 +8,8 @@ import { publicItineraryStopElementId } from "@/components/maps/publicItineraryP
 import type { ItineraryMapMarker } from "@/components/maps/ItineraryReadOnlyMap";
 import { PublicDayTripsSection } from "@/components/PublicDayTripsSection";
 import { ItineraryPublicTabs } from "@/components/ItineraryPublicTabs";
+import { clusterStopsByMapPosition } from "@/lib/clusterStopsByMapPosition";
+import { formatCalendarDateForPublic } from "@/lib/itineraryCalendarDate";
 import { getPublicItineraryBySlug } from "@/lib/itineraries";
 import { englishOrdinal } from "@/lib/englishOrdinal";
 
@@ -30,26 +32,33 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
   const mapMarkers: ItineraryMapMarker[] = [];
   const overviewStops: OverviewStopPin[] = [];
 
-  let stopNumber = 0;
+  const stopClusters = clusterStopsByMapPosition(itinerary.stops);
+  stopClusters.forEach((cluster, ci) => {
+    const ordinalLabel = englishOrdinal(ci + 1);
+    const first = cluster.stops[0];
+    const dateSuffix =
+      first.calendarDate != null ? ` · ${formatCalendarDateForPublic(first.calendarDate)}` : "";
+    const title =
+      cluster.stops.length > 1
+        ? `${ordinalLabel} — ${first.cityName} · Days ${cluster.stops.map((s) => s.dayIndexInCity).join(", ")} (same place) — ${first.placeName}${dateSuffix}`
+        : `${ordinalLabel} — ${first.cityName} · Day ${first.dayIndexInCity}: ${first.placeName}${dateSuffix}`;
+    overviewStops.push({
+      id: first.id,
+      lat: cluster.lat,
+      lng: cluster.lng,
+      title,
+      ordinalLabel,
+    });
+    mapMarkers.push({
+      kind: "stop",
+      lat: cluster.lat,
+      lng: cluster.lng,
+      title,
+      stopId: first.id,
+    });
+  });
+
   for (const s of itinerary.stops) {
-    stopNumber += 1;
-    const ordinalLabel = englishOrdinal(stopNumber);
-    if (s.lat != null && s.lng != null) {
-      overviewStops.push({
-        id: s.id,
-        lat: s.lat,
-        lng: s.lng,
-        title: `${ordinalLabel} stop — ${s.placeName} (Day ${s.dayNumber})`,
-        ordinalLabel,
-      });
-      mapMarkers.push({
-        kind: "stop",
-        lat: s.lat,
-        lng: s.lng,
-        title: `${ordinalLabel} stop — ${s.placeName} (Day ${s.dayNumber})`,
-        stopId: s.id,
-      });
-    }
     for (const p of s.pois) {
       const typeLabel = p.markerType ? `${p.markerType.name}: ` : "";
       mapMarkers.push({
@@ -72,20 +81,20 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
     <>
       <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">Route overview</h2>
       <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
-        Stops appear as numbered navy pins (1st, 2nd, … in itinerary order); colored lines follow Google Directions between
-        consecutive stops (one color per leg).
-        Choose driving, buses, trains, and/or walking above the map. Each stop below has its own POI mini-map; under the map,
+        Days appear as numbered navy pins (1st, 2nd, … for each <em>distinct</em> place in trip order; days sharing the
+        same coordinates use one pin). Colored lines follow Google Directions between consecutive days (one color per leg).
+        Choose driving, buses, trains, and/or walking above the map. Each day below has its own POI mini-map; under the map,
         use{" "}
         <span className="font-medium text-zinc-600 dark:text-zinc-300">Marker types on map</span> to choose which types
-        appear on the map and in the POI details list (all types are on by default). Click a stop pin to jump to that stop
-        in the list; click POI text to zoom its stop’s POI map.
+        appear on the map and in the POI details list (all types are on by default). Click a day pin to jump to that day
+        in the list; click POI text to zoom that day’s POI map.
       </p>
     </>
   );
 
   const stopsSection =
     itinerary.stops.length === 0 ? (
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">No stops added yet.</p>
+      <p className="text-sm text-zinc-600 dark:text-zinc-400">No days added yet.</p>
     ) : (
       <ol className="flex flex-col gap-3">
         {itinerary.stops.map((s) => (
@@ -96,9 +105,16 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
           >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className="font-medium text-zinc-900 dark:text-zinc-50">
-                Day {s.dayNumber} • Stop {s.orderIndex + 1}: {s.placeName}
+                {s.cityName} · Day {s.dayIndexInCity}: {s.placeName}
+                {s.calendarDate != null && (
+                  <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">
+                    · {formatCalendarDateForPublic(s.calendarDate)}
+                  </span>
+                )}
               </p>
-              {s.city && <p className="text-xs text-zinc-500 dark:text-zinc-500">{s.city}</p>}
+              {s.stopAreaLabel && (
+                <p className="text-xs text-zinc-500 dark:text-zinc-500">{s.stopAreaLabel}</p>
+              )}
             </div>
             {s.notes && <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{s.notes}</p>}
             {s.pois.length > 0 && (
@@ -210,6 +226,11 @@ export default async function ItineraryPage({ params }: { params: Promise<{ slug
             <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">{itinerary.title}</h1>
             {itinerary.description && (
               <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{itinerary.description}</p>
+            )}
+            {itinerary.tripDateRangeLabel && (
+              <p className="mt-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Trip dates: {itinerary.tripDateRangeLabel}
+              </p>
             )}
           </div>
           <Link href="/featured" className="text-sm font-medium text-zinc-900 underline dark:text-zinc-50">

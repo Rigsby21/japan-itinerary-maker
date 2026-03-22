@@ -128,8 +128,8 @@ export function ItineraryMapWithListFocus({
           <ItineraryOverviewRouteMap stops={overviewStops} routingStops={routingStops} />
         ) : (
           <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800/40 dark:text-zinc-400">
-            Add coordinates to stops to see the route overview with directions between them. POI maps below still work when
-            stops have places to visit.
+            Add coordinates to days to see the route overview with directions between them. POI maps below still work when
+            days have places to visit.
           </p>
         )}
       </div>

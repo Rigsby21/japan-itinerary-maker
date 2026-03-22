@@ -63,7 +63,7 @@ export function TravelPrefCheckboxes({
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         {compactNote
           ? "Same settings as the Route overview on the Itinerary tab. At least one mode must stay on."
-          : "At least one option must stay selected so the map can route between stops."}
+          : "At least one option must stay selected so the map can route between days."}
       </p>
     </div>
   );

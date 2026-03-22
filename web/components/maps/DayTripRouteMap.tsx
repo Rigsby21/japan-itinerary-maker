@@ -200,7 +200,7 @@ export function DayTripRouteMap({
       const originMarker = new google.maps.Marker({
         position: { lat: origin.lat, lng: origin.lng },
         map,
-        title: "Start (this stop)",
+        title: "Start (this itinerary day)",
         icon: itineraryMapCircleIcon(ITINERARY_STOP_PIN_COLOR, originScale, originFo),
         zIndex: 3,
       });
